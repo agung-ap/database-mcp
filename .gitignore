@@ -1,0 +1,10 @@
+# directory ignore
+.claude/
+docker/
+testdata/
+bin/
+
+# file ignore
+CLAUDE.md
+audit.log
+.mcp.json

@@ -1,0 +1,28 @@
+version: "1.0"
+
+default_connection: my_postgres_db
+
+databases:
+  - name: my_postgres_db
+    engine: postgres
+    host: localhost
+    port: 5432
+    username: readonly_user
+    password: your_password_here
+    database: my_database
+    ssl_mode: disable          # disable | require | verify-ca | verify-full
+    max_connections: 10
+    min_connections: 2
+    connect_timeout_secs: 30
+
+  - name: my_mysql_db
+    engine: mysql
+    host: localhost
+    port: 3306
+    username: admin_user
+    password: your_password_here
+    database: my_database
+    ssl_mode: disable
+    max_connections: 5
+    min_connections: 1
+    connect_timeout_secs: 30
