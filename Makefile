@@ -1,4 +1,4 @@
-.PHONY: build build-race build-linux run check test test-race test-integration test-coverage fmt lint lint-fix vet mocks generate docker-up docker-down docker-reset docker-logs clean
+.PHONY: build build-race build-linux run check test test-race test-integration test-coverage fmt lint lint-fix vet mocks generate docker-up docker-down docker-reset docker-logs clean vuln scan mod-tidy
 
 # Single command: fmt + vet + lint + build
 check: fmt vet lint build
@@ -59,3 +59,21 @@ docker-logs:
 
 clean:
 	rm -rf bin/ coverage.out coverage.html
+
+# ── Security ──────────────────────────────────────────────────────────────────
+
+## vuln: run govulncheck (call-graph aware); fails if any reachable CVE found
+vuln:
+	govulncheck ./...
+
+## vuln-verbose: same as vuln but prints all imported-but-unreachable findings too
+vuln-verbose:
+	govulncheck -show verbose ./...
+
+## scan: full security gate — vet + lint + vuln (run before every push)
+scan: vet lint vuln
+
+## mod-tidy: tidy module graph and verify go.sum is consistent
+mod-tidy:
+	go mod tidy
+	go mod verify

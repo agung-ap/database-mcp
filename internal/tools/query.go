@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/agp/db-mcp/internal/audit"
@@ -74,7 +75,11 @@ func (h *ExecuteQueryHandler) Handle(ctx context.Context, req mcp.CallToolReques
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "execute_query", connID, conn.DriverName(), "503", "query failed", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Debug("failed to close query rows", "query_id", queryID, "error", err)
+		}
+	}()
 
 	cols, err := rows.Columns()
 	if err != nil {
@@ -226,7 +231,11 @@ func (h *ExplainQueryHandler) Handle(ctx context.Context, req mcp.CallToolReques
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "explain_query", connID, conn.DriverName(), "503", "explain failed", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Debug("failed to close explain rows", "query_id", queryID, "error", err)
+		}
+	}()
 
 	var plan string
 	if rows.Next() {

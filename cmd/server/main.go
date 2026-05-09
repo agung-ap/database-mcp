@@ -63,7 +63,11 @@ func main() {
 		slog.Error("failed to open audit log", "error", err)
 		os.Exit(1)
 	}
-	defer auditLogger.Close()
+	defer func() {
+		if err := auditLogger.Close(); err != nil {
+			slog.Error("failed to close audit log", "error", err)
+		}
+	}()
 
 	// Initialize transaction store
 	ttlSeconds := 30

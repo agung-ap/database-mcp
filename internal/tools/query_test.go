@@ -68,7 +68,7 @@ func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("testdrv", "test")
 	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	return db
 }
 
