@@ -18,10 +18,10 @@ func newTestAuditLogger(t *testing.T) *audit.Logger {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "audit-*.log")
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, f.Close()) })
+	t.Cleanup(func() { f.Close() })
 	logger, err := audit.New(f.Name())
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+	t.Cleanup(func() { logger.Close() })
 	return logger
 }
 

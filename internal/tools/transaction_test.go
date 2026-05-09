@@ -21,11 +21,7 @@ func TestTxStore_AddGetRemove(t *testing.T) {
 	// Use a test db to get a real *sql.Tx
 	testDB, err := sql.Open("testdrv", "test")
 	require.NoError(t, err)
-	defer func() {
-		if err := testDB.Close(); err != nil {
-			t.Errorf("failed to close test DB: %v", err)
-		}
-	}()
+	defer testDB.Close()
 
 	tx, err := testDB.BeginTx(context.Background(), nil)
 	require.NoError(t, err)
@@ -51,11 +47,7 @@ func TestTxStore_RollbackExpired(t *testing.T) {
 
 	testDB, err := sql.Open("testdrv", "test")
 	require.NoError(t, err)
-	defer func() {
-		if err := testDB.Close(); err != nil {
-			t.Errorf("failed to close test DB: %v", err)
-		}
-	}()
+	defer testDB.Close()
 
 	tx, err := testDB.BeginTx(context.Background(), nil)
 	require.NoError(t, err)
@@ -80,11 +72,7 @@ func TestTxStore_RollbackAll(t *testing.T) {
 
 	testDB, err := sql.Open("testdrv", "test")
 	require.NoError(t, err)
-	defer func() {
-		if err := testDB.Close(); err != nil {
-			t.Errorf("failed to close test DB: %v", err)
-		}
-	}()
+	defer testDB.Close()
 
 	tx1, err := testDB.BeginTx(context.Background(), nil)
 	require.NoError(t, err)

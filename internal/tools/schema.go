@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"log/slog"
 	"time"
 
 	"github.com/agp/db-mcp/internal/audit"
@@ -56,7 +55,7 @@ func (h *ListDatabasesHandler) Handle(ctx context.Context, req mcp.CallToolReque
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "list_databases", connID, conn.DriverName(), "503", "query failed", err)
 	}
-	defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+	defer rows.Close()
 
 	var databases []string
 	for rows.Next() {
@@ -113,7 +112,7 @@ func (h *ListTablesHandler) Handle(ctx context.Context, req mcp.CallToolRequest)
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_tables", connID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer rows.Close()
 		for rows.Next() {
 			var t tableInfo
 			if err := rows.Scan(&t.Schema, &t.TableName, &t.TableType); err != nil {
@@ -129,7 +128,7 @@ func (h *ListTablesHandler) Handle(ctx context.Context, req mcp.CallToolRequest)
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_tables", connID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer rows.Close()
 		for rows.Next() {
 			var name string
 			if err := rows.Scan(&name); err != nil {
@@ -202,7 +201,7 @@ func (h *DescribeTableHandler) Handle(ctx context.Context, req mcp.CallToolReque
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "describe_table", connID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer rows.Close()
 		for rows.Next() {
 			var c columnInfo
 			var maxLen sql.NullInt64
@@ -227,7 +226,7 @@ func (h *DescribeTableHandler) Handle(ctx context.Context, req mcp.CallToolReque
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "describe_table", connID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer rows.Close()
 		for rows.Next() {
 			var c columnInfo
 			var maxLen sql.NullInt64
@@ -302,7 +301,7 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, req mcp.CallToolRequest
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_indexes", connID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer rows.Close()
 		for rows.Next() {
 			var idx indexInfo
 			if err := rows.Scan(&idx.SchemaName, &idx.TableName, &idx.IndexName, &idx.IndexDef); err != nil {
@@ -320,7 +319,7 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, req mcp.CallToolRequest
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_indexes", connID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer rows.Close()
 		for rows.Next() {
 			var idx indexInfo
 			var nonUnique int
@@ -411,7 +410,7 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, req mcp.CallToolReq
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_foreign_keys", connID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer rows.Close()
 		for rows.Next() {
 			var fk foreignKeyInfo
 			if err := rows.Scan(&fk.ConstraintName, &fk.TableSchema, &fk.TableName, &fk.ColumnName,
@@ -445,7 +444,7 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, req mcp.CallToolReq
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_foreign_keys", connID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer rows.Close()
 		for rows.Next() {
 			var fk foreignKeyInfo
 			if err := rows.Scan(&fk.ConstraintName, &fk.TableSchema, &fk.TableName, &fk.ColumnName,

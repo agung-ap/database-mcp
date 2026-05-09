@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"log/slog"
 	"time"
 
 	"github.com/agp/db-mcp/internal/audit"
@@ -83,11 +82,7 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, req mcp.CallToolReque
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "get_table_stats", connID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer func() {
-			if err := rows.Close(); err != nil {
-				slog.Debug("failed to close rows", "error", err)
-			}
-		}()
+		defer rows.Close()
 
 		if rows.Next() {
 			var lastAnalyze sql.NullTime
@@ -113,12 +108,7 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, req mcp.CallToolReque
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "get_table_stats", connID, conn.DriverName(), "503", "query failed", err)
 		}
-
-		defer func() {
-			if err := rows.Close(); err != nil {
-				slog.Debug("failed to close rows", "error", err)
-			}
-		}()
+		defer rows.Close()
 
 		if rows.Next() {
 			var rowCount sql.NullInt64
