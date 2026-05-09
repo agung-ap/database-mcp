@@ -1,48 +1,200 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
 )
 
 // Connection represents a single database connection config.
 type Connection struct {
-	Name               string `mapstructure:"name"`
-	Engine             string `mapstructure:"engine"`
-	Host               string `mapstructure:"host"`
-	Port               int    `mapstructure:"port"`
-	Username           string `mapstructure:"username"`
-	Password           string `mapstructure:"password"`
-	Database           string `mapstructure:"database"`
-	SSLMode            string `mapstructure:"ssl_mode"`
-	MaxConnections     int    `mapstructure:"max_connections"`
-	MinConnections     int    `mapstructure:"min_connections"`
-	ConnectTimeoutSecs int    `mapstructure:"connect_timeout_secs"`
+	Name               string `mapstructure:"name" json:"name"`
+	Engine             string `mapstructure:"engine" json:"engine"`
+	Host               string `mapstructure:"host" json:"host"`
+	Port               int    `mapstructure:"port" json:"port"`
+	Username           string `mapstructure:"username" json:"username"`
+	Password           string `mapstructure:"password" json:"password"`
+	Database           string `mapstructure:"database" json:"database"`
+	SSLMode            string `mapstructure:"ssl_mode" json:"ssl_mode"`
+	MaxConnections     int    `mapstructure:"max_connections" json:"max_connections"`
+	MinConnections     int    `mapstructure:"min_connections" json:"min_connections"`
+	ConnectTimeoutSecs int    `mapstructure:"connect_timeout_secs" json:"connect_timeout_secs"`
+	// SQLite-specific
+	FilePath string `mapstructure:"file_path" json:"file_path"`
 }
 
 // Config is the top-level server config.
 type Config struct {
-	Version           string       `mapstructure:"version"`
-	DefaultConnection string       `mapstructure:"default_connection"`
-	Databases         []Connection `mapstructure:"databases"`
+	Version           string       `mapstructure:"version" json:"version"`
+	DefaultConnection string       `mapstructure:"default_connection" json:"default_connection"`
+	Databases         []Connection `mapstructure:"databases" json:"databases"`
 }
 
-// Load reads configuration from the given file path.
-func Load(path string) (*Config, error) {
-	v := viper.New()
-	v.SetConfigFile(path)
+// Loader handles multi-path configuration loading with fallback chain.
+type Loader struct {
+	searchPaths []string
+	usedPath    string
+}
 
-	if err := v.ReadInConfig(); err != nil {
+// NewLoader creates a new configuration loader with fallback paths.
+func NewLoader() *Loader {
+	return &Loader{
+		searchPaths: getDefaultSearchPaths(),
+	}
+}
+
+// getDefaultSearchPaths returns the default configuration search paths in priority order.
+// 1. $MCP_DB_CONFIG_PATH (environment override - highest priority)
+// 2. .databases.json (project-local)
+// 3. .databases.yaml (project-local)
+// 4. ~/.config/db-mcp/.databases.json (user home)
+// 5. ~/.config/db-mcp/.databases.yaml (user home)
+// 6. ./config/connections.yaml (legacy fallback)
+func getDefaultSearchPaths() []string {
+	paths := []string{}
+
+	// 1. Environment override (highest priority)
+	if envPath := os.Getenv("MCP_DB_CONFIG_PATH"); envPath != "" {
+		paths = append(paths, envPath)
+	}
+
+	// 2-3. Project-local paths
+	paths = append(paths, ".databases.json")
+	paths = append(paths, ".databases.yaml")
+
+	// 4-5. User home paths
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		configDir := filepath.Join(homeDir, ".config", "db-mcp")
+		paths = append(paths, filepath.Join(configDir, ".databases.json"))
+		paths = append(paths, filepath.Join(configDir, ".databases.yaml"))
+	}
+
+	// 6. Legacy fallback
+	paths = append(paths, "./config/connections.yaml")
+
+	return paths
+}
+
+// Load reads configuration from the default search paths (with fallback chain).
+// Returns the config, the path that was used, and any error.
+func (l *Loader) Load() (*Config, string, error) {
+	for _, path := range l.searchPaths {
+		expandedPath := expandHome(path)
+		if !fileExists(expandedPath) {
+			continue
+		}
+
+		cfg, err := l.loadFromPath(expandedPath)
+		if err != nil {
+			// Log but continue to next path
+			slog.Debug("config: failed to load from path, trying next", "path", expandedPath, "error", err)
+			continue
+		}
+
+		l.usedPath = expandedPath
+		slog.Debug("config: loaded from", "path", expandedPath)
+		return cfg, expandedPath, nil
+	}
+
+	return nil, "", fmt.Errorf("config: no configuration found in any search path (searched: %v)", l.searchPaths)
+}
+
+// LoadFromPath reads configuration from a specific file path.
+// Returns the config, the path used, and any error.
+func LoadFromPath(path string) (*Config, string, error) {
+	expandedPath := expandHome(path)
+	loader := &Loader{
+		searchPaths: []string{expandedPath},
+	}
+	cfg, err := loader.loadFromPath(expandedPath)
+	if err != nil {
+		return nil, "", err
+	}
+	return cfg, expandedPath, nil
+}
+
+// loadFromPath is the internal method that loads from a specific path.
+func (l *Loader) loadFromPath(path string) (*Config, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
 		return nil, fmt.Errorf("config: read %q: %w", path, err)
 	}
 
+	// Expand environment variables in content
+	contentStr := expandEnvVars(string(content))
+
+	// Determine format based on file extension
+	ext := strings.ToLower(filepath.Ext(path))
+
 	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("config: unmarshal: %w", err)
+
+	switch ext {
+	case ".json":
+		if err := json.Unmarshal([]byte(contentStr), &cfg); err != nil {
+			return nil, fmt.Errorf("config: parse JSON from %q: %w", path, err)
+		}
+	case ".yaml", ".yml":
+		v := viper.New()
+		v.SetConfigType("yaml")
+		if err := v.ReadConfig(strings.NewReader(contentStr)); err != nil {
+			return nil, fmt.Errorf("config: parse YAML from %q: %w", path, err)
+		}
+		if err := v.Unmarshal(&cfg); err != nil {
+			return nil, fmt.Errorf("config: unmarshal YAML from %q: %w", path, err)
+		}
+	default:
+		// Try YAML as default for unknown extensions
+		v := viper.New()
+		v.SetConfigType("yaml")
+		if err := v.ReadConfig(strings.NewReader(contentStr)); err != nil {
+			return nil, fmt.Errorf("config: parse config from %q (assumed YAML): %w", path, err)
+		}
+		if err := v.Unmarshal(&cfg); err != nil {
+			return nil, fmt.Errorf("config: unmarshal config from %q: %w", path, err)
+		}
 	}
 
 	return &cfg, nil
+}
+
+// UsedPath returns the path that was actually loaded (after Load was called).
+func (l *Loader) UsedPath() string {
+	return l.usedPath
+}
+
+// Load is a convenience function for backward compatibility.
+// It loads from MCP_DB_CONFIG_PATH or defaults to ./config/connections.yaml.
+func Load(path string) (*Config, error) {
+	cfg, _, err := LoadFromPath(path)
+	return cfg, err
+}
+
+// expandHome expands ~ to the user's home directory.
+func expandHome(path string) string {
+	if strings.HasPrefix(path, "~") {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		return filepath.Join(homeDir, path[1:])
+	}
+	return path
+}
+
+// expandEnvVars replaces ${VAR_NAME} with environment variable values.
+func expandEnvVars(s string) string {
+	return os.ExpandEnv(s)
+}
+
+// fileExists checks if a file exists at the given path.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // BuildDSN constructs a DSN from the connection fields.
