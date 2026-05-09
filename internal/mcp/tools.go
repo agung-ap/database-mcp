@@ -4,8 +4,7 @@ import (
 	"github.com/agp/db-mcp/internal/audit"
 	"github.com/agp/db-mcp/internal/db"
 	"github.com/agp/db-mcp/internal/tools"
-	mcpgo "github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Handler aggregates all tool handlers and their shared dependencies.
@@ -15,7 +14,7 @@ type Handler struct {
 	TxStore *tools.TxStore
 }
 
-// RegisterAll registers all 14 MCP tools on the given Server.
+// RegisterAll registers all MCP tools on the given Server.
 func (h *Handler) RegisterAll(srv *Server) {
 	// --- Meta tools ---
 	connInfos := make([]tools.ConnectionInfo, 0)
@@ -23,230 +22,106 @@ func (h *Handler) RegisterAll(srv *Server) {
 		connInfos = append(connInfos, tools.ConnectionInfo{ID: c.Name, Driver: c.Engine})
 	}
 
+	listConnsTool := &mcp.Tool{
+		Name:        "list_connections",
+		Description: "List all configured database connection IDs and their drivers",
+	}
 	listConns := &tools.ListConnectionsHandler{Connections: connInfos, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"list_connections",
-		mcpgo.WithDescription("List all configured database connection IDs and their drivers"),
-	), server.ToolHandlerFunc(listConns.Handle))
+	srv.AddTool(listConnsTool, listConns.Handle)
 
+	testConnTool := &mcp.Tool{
+		Name:        "test_connection",
+		Description: "Ping a database connection and return latency",
+	}
 	testConn := &tools.TestConnectionHandler{Manager: h.Manager, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"test_connection",
-		mcpgo.WithDescription("Ping a database connection and return latency"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-	), server.ToolHandlerFunc(testConn.Handle))
+	AddToolWithInput(srv, testConnTool, testConn.Handle)
 
 	// --- Schema tools ---
+	listDBsTool := &mcp.Tool{
+		Name:        "list_databases",
+		Description: "List databases/schemas visible to the connected user",
+	}
 	listDBs := &tools.ListDatabasesHandler{Manager: h.Manager, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"list_databases",
-		mcpgo.WithDescription("List databases/schemas visible to the connected user"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-	), server.ToolHandlerFunc(listDBs.Handle))
+	AddToolWithInput(srv, listDBsTool, listDBs.Handle)
 
+	listTblsTool := &mcp.Tool{
+		Name:        "list_tables",
+		Description: "List tables in the connected database",
+	}
 	listTbls := &tools.ListTablesHandler{Manager: h.Manager, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"list_tables",
-		mcpgo.WithDescription("List tables in the connected database"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-		mcpgo.WithString("database",
-			mcpgo.Description("Database name (optional)"),
-		),
-	), server.ToolHandlerFunc(listTbls.Handle))
+	AddToolWithInput(srv, listTblsTool, listTbls.Handle)
 
+	descTblTool := &mcp.Tool{
+		Name:        "describe_table",
+		Description: "Return column definitions for a table",
+	}
 	descTbl := &tools.DescribeTableHandler{Manager: h.Manager, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"describe_table",
-		mcpgo.WithDescription("Return column definitions for a table"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-		mcpgo.WithString("table",
-			mcpgo.Required(),
-			mcpgo.Description("Table name"),
-		),
-		mcpgo.WithString("schema",
-			mcpgo.Description("Schema name (optional, default: public for postgres)"),
-		),
-	), server.ToolHandlerFunc(descTbl.Handle))
+	AddToolWithInput(srv, descTblTool, descTbl.Handle)
 
+	listIdxTool := &mcp.Tool{
+		Name:        "list_indexes",
+		Description: "Return indexes defined on a table",
+	}
 	listIdx := &tools.ListIndexesHandler{Manager: h.Manager, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"list_indexes",
-		mcpgo.WithDescription("List indexes on a table"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-		mcpgo.WithString("table",
-			mcpgo.Required(),
-			mcpgo.Description("Table name"),
-		),
-		mcpgo.WithString("schema",
-			mcpgo.Description("Schema name (optional)"),
-		),
-	), server.ToolHandlerFunc(listIdx.Handle))
+	AddToolWithInput(srv, listIdxTool, listIdx.Handle)
 
-	listFKs := &tools.ListForeignKeysHandler{Manager: h.Manager, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"list_foreign_keys",
-		mcpgo.WithDescription("List foreign key constraints on a table"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-		mcpgo.WithString("table",
-			mcpgo.Required(),
-			mcpgo.Description("Table name"),
-		),
-		mcpgo.WithString("schema",
-			mcpgo.Description("Schema name (optional)"),
-		),
-	), server.ToolHandlerFunc(listFKs.Handle))
+	listFKTool := &mcp.Tool{
+		Name:        "list_foreign_keys",
+		Description: "Return foreign keys for a table",
+	}
+	listFK := &tools.ListForeignKeysHandler{Manager: h.Manager, Audit: h.Audit}
+	AddToolWithInput(srv, listFKTool, listFK.Handle)
 
 	// --- Query tools ---
+	execQueryTool := &mcp.Tool{
+		Name:        "execute_query",
+		Description: "Execute a read-only SQL query",
+	}
 	execQuery := &tools.ExecuteQueryHandler{Manager: h.Manager, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"execute_query",
-		mcpgo.WithDescription("Execute a read-only SQL query and return results as JSON"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-		mcpgo.WithString("query",
-			mcpgo.Required(),
-			mcpgo.Description("SQL query to execute"),
-		),
-	), server.ToolHandlerFunc(execQuery.Handle))
+	AddToolWithInput(srv, execQueryTool, execQuery.Handle)
 
+	execMutTool := &mcp.Tool{
+		Name:        "execute_mutation",
+		Description: "Execute a SQL mutation (INSERT/UPDATE/DELETE). Must set confirm: true.",
+	}
 	execMut := &tools.ExecuteMutationHandler{Manager: h.Manager, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"execute_mutation",
-		mcpgo.WithDescription("Execute a write SQL statement (INSERT/UPDATE/DELETE) — requires confirm=true"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-		mcpgo.WithString("query",
-			mcpgo.Required(),
-			mcpgo.Description("SQL mutation statement"),
-		),
-	), server.ToolHandlerFunc(execMut.Handle))
+	AddToolWithInput(srv, execMutTool, execMut.Handle)
 
-	explainQ := &tools.ExplainQueryHandler{Manager: h.Manager, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"explain_query",
-		mcpgo.WithDescription("Return the query execution plan in JSON format"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-		mcpgo.WithString("query",
-			mcpgo.Required(),
-			mcpgo.Description("SQL query to explain"),
-		),
-	), server.ToolHandlerFunc(explainQ.Handle))
+	explainTool := &mcp.Tool{
+		Name:        "explain_query",
+		Description: "Return an EXPLAIN plan for a SQL query (read-only)",
+	}
+	explain := &tools.ExplainQueryHandler{Manager: h.Manager, Audit: h.Audit}
+	AddToolWithInput(srv, explainTool, explain.Handle)
 
-	// --- Stats tool ---
-	tblStats := &tools.GetTableStatsHandler{Manager: h.Manager, Audit: h.Audit}
-	srv.AddTool(mcpgo.NewTool(
-		"get_table_stats",
-		mcpgo.WithDescription("Return row count, size, and other statistics for a table"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-		mcpgo.WithString("table",
-			mcpgo.Required(),
-			mcpgo.Description("Table name"),
-		),
-		mcpgo.WithString("schema",
-			mcpgo.Description("Schema name (optional)"),
-		),
-	), server.ToolHandlerFunc(tblStats.Handle))
+	// --- Stats tools ---
+	statsTool := &mcp.Tool{
+		Name:        "get_table_stats",
+		Description: "Return table statistics (row count, size, etc.)",
+	}
+	stats := &tools.GetTableStatsHandler{Manager: h.Manager, Audit: h.Audit}
+	AddToolWithInput(srv, statsTool, stats.Handle)
 
 	// --- Transaction tools ---
-	beginTx := &tools.BeginTransactionHandler{Manager: h.Manager, Audit: h.Audit, TxStore: h.TxStore}
-	srv.AddTool(mcpgo.NewTool(
-		"begin_transaction",
-		mcpgo.WithDescription("Begin a database transaction and return a tx_id"),
-		mcpgo.WithString("connection_id",
-			mcpgo.Required(),
-			mcpgo.Description("Named connection alias from config"),
-		),
-		mcpgo.WithString("driver",
-			mcpgo.Required(),
-			mcpgo.Description("Database driver"),
-		),
-	), server.ToolHandlerFunc(beginTx.Handle))
+	beginTxTool := &mcp.Tool{
+		Name:        "begin_transaction",
+		Description: "Start a new database transaction",
+	}
+	beginTx := &tools.BeginTransactionHandler{Manager: h.Manager, TxStore: h.TxStore, Audit: h.Audit}
+	AddToolWithInput(srv, beginTxTool, beginTx.Handle)
 
-	commitTx := &tools.CommitTransactionHandler{Audit: h.Audit, TxStore: h.TxStore}
-	srv.AddTool(mcpgo.NewTool(
-		"commit_transaction",
-		mcpgo.WithDescription("Commit an open transaction by tx_id"),
-		mcpgo.WithString("tx_id",
-			mcpgo.Required(),
-			mcpgo.Description("Transaction ID returned by begin_transaction"),
-		),
-	), server.ToolHandlerFunc(commitTx.Handle))
+	commitTxTool := &mcp.Tool{
+		Name:        "commit_transaction",
+		Description: "Commit an open transaction",
+	}
+	commitTx := &tools.CommitTransactionHandler{TxStore: h.TxStore, Audit: h.Audit}
+	AddToolWithInput(srv, commitTxTool, commitTx.Handle)
 
-	rollbackTx := &tools.RollbackTransactionHandler{Audit: h.Audit, TxStore: h.TxStore}
-	srv.AddTool(mcpgo.NewTool(
-		"rollback_transaction",
-		mcpgo.WithDescription("Roll back an open transaction by tx_id"),
-		mcpgo.WithString("tx_id",
-			mcpgo.Required(),
-			mcpgo.Description("Transaction ID returned by begin_transaction"),
-		),
-	), server.ToolHandlerFunc(rollbackTx.Handle))
+	rollbackTxTool := &mcp.Tool{
+		Name:        "rollback_transaction",
+		Description: "Rollback an open transaction",
+	}
+	rollbackTx := &tools.RollbackTransactionHandler{TxStore: h.TxStore, Audit: h.Audit}
+	AddToolWithInput(srv, rollbackTxTool, rollbackTx.Handle)
 }
+

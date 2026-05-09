@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/agp/db-mcp/internal/audit"
 	"github.com/google/uuid"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // TableStats holds statistics for a table.
@@ -23,47 +24,62 @@ type TableStats struct {
 	DeadTuples   int64   `json:"dead_tuples,omitempty"`
 }
 
+// GetTableStatsInput is the input for get_table_stats tool.
+type GetTableStatsInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	Table        string `json:"table" jsonschema:"required,description=Table name"`
+	Schema       string `json:"schema" jsonschema:"description=Schema name (default: public for PostgreSQL)"`
+}
+
 // GetTableStatsHandler handles the get_table_stats tool.
 type GetTableStatsHandler struct {
 	Manager DBManager
 	Audit   *audit.Logger
 }
 
-func (h *GetTableStatsHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *GetTableStatsHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input GetTableStatsInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
 
-	connID := getStringArg(args, "connection_id")
-	driverName := getStringArg(args, "driver")
-	tableName := getStringArg(args, "table")
-	schemaName := getStringArg(args, "schema")
-
-	if connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
+	if input.ConnectionID == "" {
+		err := fmt.Errorf("missing connection_id: connection_id is required")
+		return newToolError(err), nil, err
 	}
-	if tableName == "" {
-		return toolError("400", "missing table", "table is required"), nil
+	if input.Table == "" {
+		err := fmt.Errorf("missing table: table is required")
+		return newToolError(err), nil, err
 	}
 
 	h.Audit.Log(audit.AuditEntry{
 		QueryID:      queryID,
 		Timestamp:    now,
 		Tool:         "get_table_stats",
-		ConnectionID: connID,
-		Driver:       driverName,
+		ConnectionID: input.ConnectionID,
+		Driver:       input.Driver,
 	})
 
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "get_table_stats", connID, driverName, "503", "connection not found", err)
+		h.Audit.Log(audit.AuditEntry{
+			QueryID:      queryID,
+			Timestamp:    time.Now(),
+			Tool:         "get_table_stats",
+			ConnectionID: input.ConnectionID,
+			Driver:       input.Driver,
+			DurationMS:   time.Since(now).Milliseconds(),
+			Success:      false,
+			Error:        err.Error(),
+		})
+		return newToolError(err), nil, err
 	}
 
 	var stats TableStats
-	stats.TableName = tableName
+	stats.TableName = input.Table
 
 	switch conn.DriverName() {
 	case "postgres":
+		schemaName := input.Schema
 		if schemaName == "" {
 			schemaName = "public"
 		}
@@ -79,9 +95,19 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, req mcp.CallToolReque
 			JOIN pg_namespace n ON n.oid = c.relnamespace
 			WHERE s.schemaname = $1 AND s.relname = $2`
 
-		rows, err := conn.QueryContext(ctx, q, schemaName, tableName)
+		rows, err := conn.QueryContext(ctx, q, schemaName, input.Table)
 		if err != nil {
-			return auditErr(h.Audit, queryID, now, "get_table_stats", connID, conn.DriverName(), "503", "query failed", err)
+			h.Audit.Log(audit.AuditEntry{
+				QueryID:      queryID,
+				Timestamp:    time.Now(),
+				Tool:         "get_table_stats",
+				ConnectionID: input.ConnectionID,
+				Driver:       conn.DriverName(),
+				DurationMS:   time.Since(now).Milliseconds(),
+				Success:      false,
+				Error:        err.Error(),
+			})
+			return newToolError(err), nil, err
 		}
 		defer func() {
 			if err := rows.Close(); err != nil {
@@ -92,7 +118,17 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, req mcp.CallToolReque
 		if rows.Next() {
 			var lastAnalyze sql.NullTime
 			if err := rows.Scan(&stats.LiveTuples, &stats.DeadTuples, &stats.SizeBytes, &lastAnalyze); err != nil {
-				return auditErr(h.Audit, queryID, now, "get_table_stats", connID, conn.DriverName(), "500", "scan failed", err)
+				h.Audit.Log(audit.AuditEntry{
+					QueryID:      queryID,
+					Timestamp:    time.Now(),
+					Tool:         "get_table_stats",
+					ConnectionID: input.ConnectionID,
+					Driver:       conn.DriverName(),
+					DurationMS:   time.Since(now).Milliseconds(),
+					Success:      false,
+					Error:        err.Error(),
+				})
+				return newToolError(err), nil, err
 			}
 			stats.RowCount = stats.LiveTuples
 			if lastAnalyze.Valid {
@@ -101,7 +137,17 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, req mcp.CallToolReque
 			}
 		}
 		if err := rows.Err(); err != nil {
-			return auditErr(h.Audit, queryID, now, "get_table_stats", connID, conn.DriverName(), "500", "rows error", err)
+			h.Audit.Log(audit.AuditEntry{
+				QueryID:      queryID,
+				Timestamp:    time.Now(),
+				Tool:         "get_table_stats",
+				ConnectionID: input.ConnectionID,
+				Driver:       conn.DriverName(),
+				DurationMS:   time.Since(now).Milliseconds(),
+				Success:      false,
+				Error:        err.Error(),
+			})
+			return newToolError(err), nil, err
 		}
 
 	case "mysql":
@@ -109,9 +155,19 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, req mcp.CallToolReque
 			FROM information_schema.TABLES
 			WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE()`
 
-		rows, err := conn.QueryContext(ctx, q, tableName)
+		rows, err := conn.QueryContext(ctx, q, input.Table)
 		if err != nil {
-			return auditErr(h.Audit, queryID, now, "get_table_stats", connID, conn.DriverName(), "503", "query failed", err)
+			h.Audit.Log(audit.AuditEntry{
+				QueryID:      queryID,
+				Timestamp:    time.Now(),
+				Tool:         "get_table_stats",
+				ConnectionID: input.ConnectionID,
+				Driver:       conn.DriverName(),
+				DurationMS:   time.Since(now).Milliseconds(),
+				Success:      false,
+				Error:        err.Error(),
+			})
+			return newToolError(err), nil, err
 		}
 
 		defer func() {
@@ -125,7 +181,17 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, req mcp.CallToolReque
 			var sizeBytes sql.NullInt64
 			var createTime sql.NullTime
 			if err := rows.Scan(&rowCount, &sizeBytes, &createTime); err != nil {
-				return auditErr(h.Audit, queryID, now, "get_table_stats", connID, conn.DriverName(), "500", "scan failed", err)
+				h.Audit.Log(audit.AuditEntry{
+					QueryID:      queryID,
+					Timestamp:    time.Now(),
+					Tool:         "get_table_stats",
+					ConnectionID: input.ConnectionID,
+					Driver:       conn.DriverName(),
+					DurationMS:   time.Since(now).Milliseconds(),
+					Success:      false,
+					Error:        err.Error(),
+				})
+				return newToolError(err), nil, err
 			}
 			if rowCount.Valid {
 				stats.RowCount = rowCount.Int64
@@ -139,14 +205,34 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, req mcp.CallToolReque
 			}
 		}
 		if err := rows.Err(); err != nil {
-			return auditErr(h.Audit, queryID, now, "get_table_stats", connID, conn.DriverName(), "500", "rows error", err)
+			h.Audit.Log(audit.AuditEntry{
+				QueryID:      queryID,
+				Timestamp:    time.Now(),
+				Tool:         "get_table_stats",
+				ConnectionID: input.ConnectionID,
+				Driver:       conn.DriverName(),
+				DurationMS:   time.Since(now).Milliseconds(),
+				Success:      false,
+				Error:        err.Error(),
+			})
+			return newToolError(err), nil, err
 		}
 
 	default:
-		return toolError("400", "unsupported driver", conn.DriverName()), nil
+		err := fmt.Errorf("unsupported driver: %s", conn.DriverName())
+		return newToolError(err), nil, err
 	}
 
 	data, _ := json.Marshal(stats)
-	auditSuccess(h.Audit, queryID, now, "get_table_stats", connID, conn.DriverName(), "", 0, 0)
-	return mcp.NewToolResultText(string(data)), nil
+	h.Audit.Log(audit.AuditEntry{
+		QueryID:      queryID,
+		Timestamp:    time.Now(),
+		Tool:         "get_table_stats",
+		ConnectionID: input.ConnectionID,
+		Driver:       conn.DriverName(),
+		DurationMS:   time.Since(now).Milliseconds(),
+		Success:      true,
+	})
+
+	return newToolTextResult(string(data)), nil, nil
 }

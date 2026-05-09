@@ -9,7 +9,7 @@ import (
 
 	"github.com/agp/db-mcp/internal/audit"
 	"github.com/google/uuid"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // TxEntry holds a tracked transaction with its metadata.
@@ -102,6 +102,12 @@ func (ts *TxStore) RollbackAll() {
 	}
 }
 
+// BeginTransactionInput is the input for begin_transaction tool.
+type BeginTransactionInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+}
+
 // BeginTransactionHandler handles the begin_transaction tool.
 type BeginTransactionHandler struct {
 	Manager DBManager
@@ -109,42 +115,72 @@ type BeginTransactionHandler struct {
 	TxStore *TxStore
 }
 
-func (h *BeginTransactionHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *BeginTransactionHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input BeginTransactionInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
 
-	connID := getStringArg(args, "connection_id")
-	driverName := getStringArg(args, "driver")
-
-	if connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
+	if input.ConnectionID == "" {
+		err := fmt.Errorf("missing connection_id: connection_id is required")
+		return newToolError(err), nil, err
 	}
 
 	h.Audit.Log(audit.AuditEntry{
 		QueryID:      queryID,
 		Timestamp:    now,
 		Tool:         "begin_transaction",
-		ConnectionID: connID,
-		Driver:       driverName,
+		ConnectionID: input.ConnectionID,
+		Driver:       input.Driver,
 	})
 
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "begin_transaction", connID, driverName, "503", "connection not found", err)
+		h.Audit.Log(audit.AuditEntry{
+			QueryID:      queryID,
+			Timestamp:    time.Now(),
+			Tool:         "begin_transaction",
+			ConnectionID: input.ConnectionID,
+			Driver:       input.Driver,
+			DurationMS:   time.Since(now).Milliseconds(),
+			Success:      false,
+			Error:        err.Error(),
+		})
+		return newToolError(err), nil, err
 	}
 
 	tx, err := conn.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "begin_transaction", connID, conn.DriverName(), "503", "begin transaction failed", err)
+		h.Audit.Log(audit.AuditEntry{
+			QueryID:      queryID,
+			Timestamp:    time.Now(),
+			Tool:         "begin_transaction",
+			ConnectionID: input.ConnectionID,
+			Driver:       conn.DriverName(),
+			DurationMS:   time.Since(now).Milliseconds(),
+			Success:      false,
+			Error:        err.Error(),
+		})
+		return newToolError(err), nil, err
 	}
 
-	txID := h.TxStore.Add(connID, conn.DriverName(), tx)
+	txID := h.TxStore.Add(input.ConnectionID, conn.DriverName(), tx)
 
-	auditSuccess(h.Audit, queryID, now, "begin_transaction", connID, conn.DriverName(), "", 0, 0)
+	h.Audit.Log(audit.AuditEntry{
+		QueryID:      queryID,
+		Timestamp:    time.Now(),
+		Tool:         "begin_transaction",
+		ConnectionID: input.ConnectionID,
+		Driver:       conn.DriverName(),
+		DurationMS:   time.Since(now).Milliseconds(),
+		Success:      true,
+	})
 
 	resp := fmt.Sprintf(`{"tx_id":%q}`, txID)
-	return mcp.NewToolResultText(resp), nil
+	return newToolTextResult(resp), nil, nil
+}
+
+// CommitTransactionInput is the input for commit_transaction tool.
+type CommitTransactionInput struct {
+	TxID string `json:"tx_id" jsonschema:"required,description=Transaction ID returned by begin_transaction"`
 }
 
 // CommitTransactionHandler handles the commit_transaction tool.
@@ -153,14 +189,13 @@ type CommitTransactionHandler struct {
 	TxStore *TxStore
 }
 
-func (h *CommitTransactionHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *CommitTransactionHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input CommitTransactionInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
 
-	txID := getStringArg(args, "tx_id")
-	if txID == "" {
-		return toolError("400", "missing tx_id", "tx_id is required"), nil
+	if input.TxID == "" {
+		err := fmt.Errorf("missing tx_id: tx_id is required")
+		return newToolError(err), nil, err
 	}
 
 	h.Audit.Log(audit.AuditEntry{
@@ -169,9 +204,18 @@ func (h *CommitTransactionHandler) Handle(ctx context.Context, req mcp.CallToolR
 		Tool:      "commit_transaction",
 	})
 
-	entry, ok := h.TxStore.Get(txID)
+	entry, ok := h.TxStore.Get(input.TxID)
 	if !ok {
-		return toolError("400", "tx_id not found", fmt.Sprintf("no active transaction with id %q", txID)), nil
+		err := fmt.Errorf("tx_id not found: no active transaction with id %q", input.TxID)
+		h.Audit.Log(audit.AuditEntry{
+			QueryID:    queryID,
+			Timestamp:  time.Now(),
+			Tool:       "commit_transaction",
+			DurationMS: time.Since(now).Milliseconds(),
+			Success:    false,
+			Error:      err.Error(),
+		})
+		return newToolError(err), nil, err
 	}
 
 	if err := entry.Tx.Commit(); err != nil {
@@ -185,13 +229,26 @@ func (h *CommitTransactionHandler) Handle(ctx context.Context, req mcp.CallToolR
 			Success:      false,
 			Error:        err.Error(),
 		})
-		return toolError("503", "commit failed", err.Error()), nil
+		return newToolError(err), nil, err
 	}
 
-	h.TxStore.Remove(txID)
-	auditSuccess(h.Audit, queryID, now, "commit_transaction", entry.ConnID, entry.Driver, "", 0, 0)
+	h.TxStore.Remove(input.TxID)
+	h.Audit.Log(audit.AuditEntry{
+		QueryID:      queryID,
+		Timestamp:    time.Now(),
+		Tool:         "commit_transaction",
+		ConnectionID: entry.ConnID,
+		Driver:       entry.Driver,
+		DurationMS:   time.Since(now).Milliseconds(),
+		Success:      true,
+	})
 
-	return mcp.NewToolResultText(`{"committed":true}`), nil
+	return newToolTextResult(`{"committed":true}`), nil, nil
+}
+
+// RollbackTransactionInput is the input for rollback_transaction tool.
+type RollbackTransactionInput struct {
+	TxID string `json:"tx_id" jsonschema:"required,description=Transaction ID returned by begin_transaction"`
 }
 
 // RollbackTransactionHandler handles the rollback_transaction tool.
@@ -200,14 +257,13 @@ type RollbackTransactionHandler struct {
 	TxStore *TxStore
 }
 
-func (h *RollbackTransactionHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *RollbackTransactionHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input RollbackTransactionInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
 
-	txID := getStringArg(args, "tx_id")
-	if txID == "" {
-		return toolError("400", "missing tx_id", "tx_id is required"), nil
+	if input.TxID == "" {
+		err := fmt.Errorf("missing tx_id: tx_id is required")
+		return newToolError(err), nil, err
 	}
 
 	h.Audit.Log(audit.AuditEntry{
@@ -216,9 +272,18 @@ func (h *RollbackTransactionHandler) Handle(ctx context.Context, req mcp.CallToo
 		Tool:      "rollback_transaction",
 	})
 
-	entry, ok := h.TxStore.Get(txID)
+	entry, ok := h.TxStore.Get(input.TxID)
 	if !ok {
-		return toolError("400", "tx_id not found", fmt.Sprintf("no active transaction with id %q", txID)), nil
+		err := fmt.Errorf("tx_id not found: no active transaction with id %q", input.TxID)
+		h.Audit.Log(audit.AuditEntry{
+			QueryID:    queryID,
+			Timestamp:  time.Now(),
+			Tool:       "rollback_transaction",
+			DurationMS: time.Since(now).Milliseconds(),
+			Success:    false,
+			Error:      err.Error(),
+		})
+		return newToolError(err), nil, err
 	}
 
 	if err := entry.Tx.Rollback(); err != nil {
@@ -232,11 +297,19 @@ func (h *RollbackTransactionHandler) Handle(ctx context.Context, req mcp.CallToo
 			Success:      false,
 			Error:        err.Error(),
 		})
-		return toolError("503", "rollback failed", err.Error()), nil
+		return newToolError(err), nil, err
 	}
 
-	h.TxStore.Remove(txID)
-	auditSuccess(h.Audit, queryID, now, "rollback_transaction", entry.ConnID, entry.Driver, "", 0, 0)
+	h.TxStore.Remove(input.TxID)
+	h.Audit.Log(audit.AuditEntry{
+		QueryID:      queryID,
+		Timestamp:    time.Now(),
+		Tool:         "rollback_transaction",
+		ConnectionID: entry.ConnID,
+		Driver:       entry.Driver,
+		DurationMS:   time.Since(now).Milliseconds(),
+		Success:      true,
+	})
 
-	return mcp.NewToolResultText(`{"rolled_back":true}`), nil
+	return newToolTextResult(`{"rolled_back":true}`), nil, nil
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/agp/db-mcp/internal/audit"
 	"github.com/agp/db-mcp/internal/db"
 	"github.com/google/uuid"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // ConnectionInfo is returned by list_connections.
@@ -18,14 +18,14 @@ type ConnectionInfo struct {
 	Driver string `json:"driver"`
 }
 
-// ListConnectionsHandler handles the list_connections tool.
+// ListConnectionsHandler handles the list_connections tool (no inputs).
 type ListConnectionsHandler struct {
 	Connections []ConnectionInfo
 	Audit       *audit.Logger
 }
 
 // Handle implements the list_connections tool.
-func (h *ListConnectionsHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *ListConnectionsHandler) Handle(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
 
@@ -38,7 +38,15 @@ func (h *ListConnectionsHandler) Handle(ctx context.Context, req mcp.CallToolReq
 
 	data, err := json.Marshal(h.Connections)
 	if err != nil {
-		return toolError("500", "failed to marshal connections", err.Error()), nil
+		h.Audit.Log(audit.AuditEntry{
+			QueryID:    queryID,
+			Timestamp:  time.Now(),
+			Tool:       "list_connections",
+			DurationMS: time.Since(now).Milliseconds(),
+			Success:    false,
+			Error:      err.Error(),
+		})
+		return newToolError(err), nil, err
 	}
 
 	h.Audit.Log(audit.AuditEntry{
@@ -49,7 +57,13 @@ func (h *ListConnectionsHandler) Handle(ctx context.Context, req mcp.CallToolReq
 		Success:    true,
 	})
 
-	return mcp.NewToolResultText(string(data)), nil
+	return newToolTextResult(string(data)), nil, nil
+}
+
+// TestConnectionInput is the input for test_connection tool.
+type TestConnectionInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
 }
 
 // TestConnectionHandler handles the test_connection tool.
@@ -61,37 +75,31 @@ type TestConnectionHandler struct {
 }
 
 // Handle implements the test_connection tool.
-func (h *TestConnectionHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *TestConnectionHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input TestConnectionInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-
-	connID, ok := req.Params.Arguments["connection_id"].(string)
-	if !ok || connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
-	}
-	driver, _ := req.Params.Arguments["driver"].(string)
 
 	h.Audit.Log(audit.AuditEntry{
 		QueryID:      queryID,
 		Timestamp:    now,
 		Tool:         "test_connection",
-		ConnectionID: connID,
-		Driver:       driver,
+		ConnectionID: input.ConnectionID,
+		Driver:       input.Driver,
 	})
 
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
 		h.Audit.Log(audit.AuditEntry{
 			QueryID:      queryID,
 			Timestamp:    time.Now(),
 			Tool:         "test_connection",
-			ConnectionID: connID,
-			Driver:       driver,
+			ConnectionID: input.ConnectionID,
+			Driver:       input.Driver,
 			DurationMS:   time.Since(now).Milliseconds(),
 			Success:      false,
 			Error:        err.Error(),
 		})
-		return toolError("503", "connection not found", err.Error()), nil
+		return newToolError(err), nil, err
 	}
 
 	pingStart := time.Now()
@@ -100,28 +108,28 @@ func (h *TestConnectionHandler) Handle(ctx context.Context, req mcp.CallToolRequ
 			QueryID:      queryID,
 			Timestamp:    time.Now(),
 			Tool:         "test_connection",
-			ConnectionID: connID,
+			ConnectionID: input.ConnectionID,
 			Driver:       conn.DriverName(),
 			DurationMS:   time.Since(now).Milliseconds(),
 			Success:      false,
 			Error:        err.Error(),
 		})
-		return toolError("503", "ping failed", err.Error()), nil
+		return newToolError(err), nil, err
 	}
 	latencyMS := time.Since(pingStart).Milliseconds()
 
 	result := fmt.Sprintf(`{"connection_id":%q,"driver":%q,"latency_ms":%d,"ok":true}`,
-		connID, conn.DriverName(), latencyMS)
+		input.ConnectionID, conn.DriverName(), latencyMS)
 
 	h.Audit.Log(audit.AuditEntry{
 		QueryID:      queryID,
 		Timestamp:    time.Now(),
 		Tool:         "test_connection",
-		ConnectionID: connID,
+		ConnectionID: input.ConnectionID,
 		Driver:       conn.DriverName(),
 		DurationMS:   time.Since(now).Milliseconds(),
 		Success:      true,
 	})
 
-	return mcp.NewToolResultText(result), nil
+	return newToolTextResult(result), nil, nil
 }

@@ -4,18 +4,25 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/agp/db-mcp/internal/audit"
 	"github.com/agp/db-mcp/internal/db"
 	"github.com/google/uuid"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // DBManager is the interface the schema handlers need to look up connections.
 type DBManager interface {
 	Get(connectionID string) (db.Driver, error)
+}
+
+// ListDatabasesInput is the input for list_databases tool.
+type ListDatabasesInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
 }
 
 // ListDatabasesHandler handles list_databases.
@@ -24,22 +31,15 @@ type ListDatabasesHandler struct {
 	Audit   *audit.Logger
 }
 
-func (h *ListDatabasesHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *ListDatabasesHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input ListDatabasesInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
 
-	connID := getStringArg(args, "connection_id")
-	driverName := getStringArg(args, "driver")
-	if connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
-	}
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_databases", ConnectionID: input.ConnectionID, Driver: input.Driver})
 
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_databases", ConnectionID: connID, Driver: driverName})
-
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "list_databases", connID, driverName, "503", "connection not found", err)
+		return newToolError(err), nil, err
 	}
 
 	var query string
@@ -49,30 +49,38 @@ func (h *ListDatabasesHandler) Handle(ctx context.Context, req mcp.CallToolReque
 	case "mysql":
 		query = "SHOW DATABASES"
 	default:
-		return toolError("400", "unsupported driver", conn.DriverName()), nil
+		err := fmt.Errorf("unsupported driver: %s", conn.DriverName())
+		return newToolError(err), nil, err
 	}
 
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "list_databases", connID, conn.DriverName(), "503", "query failed", err)
+		return newToolError(err), nil, err
 	}
-	defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+	defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
 
 	var databases []string
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			return auditErr(h.Audit, queryID, now, "list_databases", connID, conn.DriverName(), "500", "scan failed", err)
+			return newToolError(err), nil, err
 		}
 		databases = append(databases, name)
 	}
 	if err := rows.Err(); err != nil {
-		return auditErr(h.Audit, queryID, now, "list_databases", connID, conn.DriverName(), "500", "rows error", err)
+		return newToolError(err), nil, err
 	}
 
 	data, _ := json.Marshal(databases)
-	auditSuccess(h.Audit, queryID, now, "list_databases", connID, conn.DriverName(), "", 0, 0)
-	return mcp.NewToolResultText(string(data)), nil
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "list_databases", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: true})
+	return newToolTextResult(string(data)), nil, nil
+}
+
+// ListTablesInput is the input for list_tables tool.
+type ListTablesInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	Database     string `json:"database" jsonschema:"description=Database name (optional)"`
 }
 
 // ListTablesHandler handles list_tables.
@@ -87,22 +95,15 @@ type tableInfo struct {
 	TableType string `json:"table_type,omitempty"`
 }
 
-func (h *ListTablesHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *ListTablesHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input ListTablesInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
 
-	connID := getStringArg(args, "connection_id")
-	driverName := getStringArg(args, "driver")
-	if connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
-	}
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_tables", ConnectionID: input.ConnectionID, Driver: input.Driver})
 
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_tables", ConnectionID: connID, Driver: driverName})
-
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "list_tables", connID, driverName, "503", "connection not found", err)
+		return newToolError(err), nil, err
 	}
 
 	var tables []tableInfo
@@ -111,42 +112,51 @@ func (h *ListTablesHandler) Handle(ctx context.Context, req mcp.CallToolRequest)
 		q := `SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY table_schema, table_name`
 		rows, err := conn.QueryContext(ctx, q)
 		if err != nil {
-			return auditErr(h.Audit, queryID, now, "list_tables", connID, conn.DriverName(), "503", "query failed", err)
+			return newToolError(err), nil, err
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
 		for rows.Next() {
 			var t tableInfo
 			if err := rows.Scan(&t.Schema, &t.TableName, &t.TableType); err != nil {
-				return auditErr(h.Audit, queryID, now, "list_tables", connID, conn.DriverName(), "500", "scan failed", err)
+				return newToolError(err), nil, err
 			}
 			tables = append(tables, t)
 		}
 		if err := rows.Err(); err != nil {
-			return auditErr(h.Audit, queryID, now, "list_tables", connID, conn.DriverName(), "500", "rows error", err)
+			return newToolError(err), nil, err
 		}
 	case "mysql":
 		rows, err := conn.QueryContext(ctx, "SHOW TABLES")
 		if err != nil {
-			return auditErr(h.Audit, queryID, now, "list_tables", connID, conn.DriverName(), "503", "query failed", err)
+			return newToolError(err), nil, err
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
 		for rows.Next() {
 			var name string
 			if err := rows.Scan(&name); err != nil {
-				return auditErr(h.Audit, queryID, now, "list_tables", connID, conn.DriverName(), "500", "scan failed", err)
+				return newToolError(err), nil, err
 			}
 			tables = append(tables, tableInfo{TableName: name})
 		}
 		if err := rows.Err(); err != nil {
-			return auditErr(h.Audit, queryID, now, "list_tables", connID, conn.DriverName(), "500", "rows error", err)
+			return newToolError(err), nil, err
 		}
 	default:
-		return toolError("400", "unsupported driver", conn.DriverName()), nil
+		err := fmt.Errorf("unsupported driver: %s", conn.DriverName())
+		return newToolError(err), nil, err
 	}
 
 	data, _ := json.Marshal(tables)
-	auditSuccess(h.Audit, queryID, now, "list_tables", connID, conn.DriverName(), "", 0, 0)
-	return mcp.NewToolResultText(string(data)), nil
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "list_tables", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: true})
+	return newToolTextResult(string(data)), nil, nil
+}
+
+// DescribeTableInput is the input for describe_table tool.
+type DescribeTableInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	Table        string `json:"table" jsonschema:"required,description=Table name"`
+	Schema       string `json:"schema" jsonschema:"description=Schema name (optional, default: public for postgres)"`
 }
 
 // DescribeTableHandler handles describe_table.
@@ -156,100 +166,93 @@ type DescribeTableHandler struct {
 }
 
 type columnInfo struct {
-	Name       string `json:"column_name"`
-	OrdinalPos int    `json:"ordinal_position"`
-	Default    string `json:"column_default,omitempty"`
-	Nullable   string `json:"is_nullable"`
+	ColumnName string `json:"column_name"`
 	DataType   string `json:"data_type"`
-	MaxLength  *int   `json:"character_maximum_length,omitempty"`
+	IsNullable bool   `json:"is_nullable"`
+	ColumnKey  string `json:"column_key,omitempty"`
+	Extra      string `json:"extra,omitempty"`
 }
 
-func (h *DescribeTableHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *DescribeTableHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input DescribeTableInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
 
-	connID := getStringArg(args, "connection_id")
-	driverName := getStringArg(args, "driver")
-	tableName := getStringArg(args, "table")
-	schemaName := getStringArg(args, "schema")
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "describe_table", ConnectionID: input.ConnectionID, Driver: input.Driver})
 
-	if connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
-	}
-	if tableName == "" {
-		return toolError("400", "missing table", "table is required"), nil
-	}
-
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "describe_table", ConnectionID: connID, Driver: driverName})
-
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "describe_table", connID, driverName, "503", "connection not found", err)
+		return newToolError(err), nil, err
 	}
 
 	var columns []columnInfo
+	schema := input.Schema
+	if schema == "" && conn.DriverName() == "postgres" {
+		schema = "public"
+	}
+
 	switch conn.DriverName() {
 	case "postgres":
-		if schemaName == "" {
-			schemaName = "public"
-		}
-		q := `SELECT column_name, ordinal_position, COALESCE(column_default,''), is_nullable, data_type, character_maximum_length
-			FROM information_schema.columns
-			WHERE table_schema = $1 AND table_name = $2
-			ORDER BY ordinal_position`
-		rows, err := conn.QueryContext(ctx, q, schemaName, tableName)
+		q := `SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position`
+		rows, err := conn.QueryContext(ctx, q, schema, input.Table)
 		if err != nil {
-			return auditErr(h.Audit, queryID, now, "describe_table", connID, conn.DriverName(), "503", "query failed", err)
+			return newToolError(err), nil, err
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
 		for rows.Next() {
-			var c columnInfo
-			var maxLen sql.NullInt64
-			if err := rows.Scan(&c.Name, &c.OrdinalPos, &c.Default, &c.Nullable, &c.DataType, &maxLen); err != nil {
-				return auditErr(h.Audit, queryID, now, "describe_table", connID, conn.DriverName(), "500", "scan failed", err)
+			var col columnInfo
+			var nullable string
+			if err := rows.Scan(&col.ColumnName, &col.DataType, &nullable); err != nil {
+				return newToolError(err), nil, err
 			}
-			if maxLen.Valid {
-				v := int(maxLen.Int64)
-				c.MaxLength = &v
-			}
-			columns = append(columns, c)
+			col.IsNullable = nullable == "YES"
+			columns = append(columns, col)
 		}
 		if err := rows.Err(); err != nil {
-			return auditErr(h.Audit, queryID, now, "describe_table", connID, conn.DriverName(), "500", "rows error", err)
+			return newToolError(err), nil, err
 		}
 	case "mysql":
-		q := `SELECT COLUMN_NAME, ORDINAL_POSITION, COALESCE(COLUMN_DEFAULT,''), IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
-			FROM information_schema.COLUMNS
-			WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE()
-			ORDER BY ORDINAL_POSITION`
-		rows, err := conn.QueryContext(ctx, q, tableName)
+		q := fmt.Sprintf("DESCRIBE %s", input.Table)
+		rows, err := conn.QueryContext(ctx, q)
 		if err != nil {
-			return auditErr(h.Audit, queryID, now, "describe_table", connID, conn.DriverName(), "503", "query failed", err)
+			return newToolError(err), nil, err
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
 		for rows.Next() {
-			var c columnInfo
-			var maxLen sql.NullInt64
-			if err := rows.Scan(&c.Name, &c.OrdinalPos, &c.Default, &c.Nullable, &c.DataType, &maxLen); err != nil {
-				return auditErr(h.Audit, queryID, now, "describe_table", connID, conn.DriverName(), "500", "scan failed", err)
+			var col columnInfo
+			var nullable string
+			var key sql.NullString
+			var extra sql.NullString
+			if err := rows.Scan(&col.ColumnName, &col.DataType, &nullable, &key, nil, &extra); err != nil {
+				return newToolError(err), nil, err
 			}
-			if maxLen.Valid {
-				v := int(maxLen.Int64)
-				c.MaxLength = &v
+			col.IsNullable = nullable == "YES"
+			if key.Valid {
+				col.ColumnKey = key.String
 			}
-			columns = append(columns, c)
+			if extra.Valid {
+				col.Extra = extra.String
+			}
+			columns = append(columns, col)
 		}
 		if err := rows.Err(); err != nil {
-			return auditErr(h.Audit, queryID, now, "describe_table", connID, conn.DriverName(), "500", "rows error", err)
+			return newToolError(err), nil, err
 		}
 	default:
-		return toolError("400", "unsupported driver", conn.DriverName()), nil
+		err := fmt.Errorf("unsupported driver: %s", conn.DriverName())
+		return newToolError(err), nil, err
 	}
 
 	data, _ := json.Marshal(columns)
-	auditSuccess(h.Audit, queryID, now, "describe_table", connID, conn.DriverName(), "", 0, 0)
-	return mcp.NewToolResultText(string(data)), nil
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "describe_table", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: true})
+	return newToolTextResult(string(data)), nil, nil
+}
+
+// ListIndexesInput is the input for list_indexes tool.
+type ListIndexesInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	Table        string `json:"table" jsonschema:"required,description=Table name"`
+	Schema       string `json:"schema" jsonschema:"description=Schema name (optional)"`
 }
 
 // ListIndexesHandler handles list_indexes.
@@ -259,87 +262,103 @@ type ListIndexesHandler struct {
 }
 
 type indexInfo struct {
-	SchemaName string `json:"schema_name,omitempty"`
-	TableName  string `json:"table_name"`
-	IndexName  string `json:"index_name"`
-	ColumnName string `json:"column_name,omitempty"`
-	IsUnique   bool   `json:"is_unique"`
-	IndexDef   string `json:"index_def,omitempty"`
+	IndexName string `json:"index_name"`
+	ColumnName string `json:"column_name"`
+	IsUnique bool `json:"is_unique"`
+	IsPrimary bool `json:"is_primary"`
 }
 
-func (h *ListIndexesHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *ListIndexesHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input ListIndexesInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
 
-	connID := getStringArg(args, "connection_id")
-	driverName := getStringArg(args, "driver")
-	tableName := getStringArg(args, "table")
-	schemaName := getStringArg(args, "schema")
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_indexes", ConnectionID: input.ConnectionID, Driver: input.Driver})
 
-	if connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
-	}
-	if tableName == "" {
-		return toolError("400", "missing table", "table is required"), nil
-	}
-
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_indexes", ConnectionID: connID, Driver: driverName})
-
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "list_indexes", connID, driverName, "503", "connection not found", err)
+		return newToolError(err), nil, err
 	}
 
 	var indexes []indexInfo
+	schema := input.Schema
+	if schema == "" && conn.DriverName() == "postgres" {
+		schema = "public"
+	}
+
 	switch conn.DriverName() {
 	case "postgres":
-		if schemaName == "" {
-			schemaName = "public"
+		q := `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = $1`
+		if schema != "" {
+			q += ` AND schemaname = $2`
 		}
-		q := `SELECT schemaname, tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = $1 AND tablename = $2 ORDER BY indexname`
-		rows, err := conn.QueryContext(ctx, q, schemaName, tableName)
-		if err != nil {
-			return auditErr(h.Audit, queryID, now, "list_indexes", connID, conn.DriverName(), "503", "query failed", err)
+		var rows *sql.Rows
+		var queryErr error
+		if schema != "" {
+			rows, queryErr = conn.QueryContext(ctx, q, input.Table, schema)
+		} else {
+			rows, queryErr = conn.QueryContext(ctx, q, input.Table)
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		if queryErr != nil {
+			return newToolError(queryErr), nil, queryErr
+		}
+		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
 		for rows.Next() {
-			var idx indexInfo
-			if err := rows.Scan(&idx.SchemaName, &idx.TableName, &idx.IndexName, &idx.IndexDef); err != nil {
-				return auditErr(h.Audit, queryID, now, "list_indexes", connID, conn.DriverName(), "500", "scan failed", err)
+			var indexName, indexDef string
+			if err := rows.Scan(&indexName, &indexDef); err != nil {
+				return newToolError(err), nil, err
 			}
-			indexes = append(indexes, idx)
+			indexes = append(indexes, indexInfo{IndexName: indexName, ColumnName: "see indexdef"})
 		}
 		if err := rows.Err(); err != nil {
-			return auditErr(h.Audit, queryID, now, "list_indexes", connID, conn.DriverName(), "500", "rows error", err)
+			return newToolError(err), nil, err
 		}
 	case "mysql":
-		// For MySQL SHOW INDEX we construct a safe query using information_schema
-		q := `SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME, NON_UNIQUE FROM information_schema.STATISTICS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE() ORDER BY INDEX_NAME, SEQ_IN_INDEX`
-		rows, err := conn.QueryContext(ctx, q, tableName)
+		q := fmt.Sprintf("SHOW INDEX FROM %s", input.Table)
+		rows, err := conn.QueryContext(ctx, q)
 		if err != nil {
-			return auditErr(h.Audit, queryID, now, "list_indexes", connID, conn.DriverName(), "503", "query failed", err)
+			return newToolError(err), nil, err
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
 		for rows.Next() {
-			var idx indexInfo
-			var nonUnique int
-			if err := rows.Scan(&idx.TableName, &idx.IndexName, &idx.ColumnName, &nonUnique); err != nil {
-				return auditErr(h.Audit, queryID, now, "list_indexes", connID, conn.DriverName(), "500", "scan failed", err)
+			var tableName, nonUnique int
+			var keyName string
+			var seqInIndex int
+			var columnName string
+			var collation sql.NullString
+			var cardinality sql.NullInt64
+			var subPart sql.NullString
+			var packed sql.NullString
+			var null string
+			var indexType string
+			var comment string
+			var indexComment string
+			var visible string
+			var expression sql.NullString
+			
+			if err := rows.Scan(&tableName, &nonUnique, &keyName, &seqInIndex, &columnName, &collation, &cardinality, &subPart, &packed, &null, &indexType, &comment, &indexComment, &visible, &expression); err != nil {
+				return newToolError(err), nil, err
 			}
-			idx.IsUnique = nonUnique == 0
-			indexes = append(indexes, idx)
+			indexes = append(indexes, indexInfo{IndexName: keyName, ColumnName: columnName, IsUnique: nonUnique == 0})
 		}
 		if err := rows.Err(); err != nil {
-			return auditErr(h.Audit, queryID, now, "list_indexes", connID, conn.DriverName(), "500", "rows error", err)
+			return newToolError(err), nil, err
 		}
 	default:
-		return toolError("400", "unsupported driver", conn.DriverName()), nil
+		err := fmt.Errorf("unsupported driver: %s", conn.DriverName())
+		return newToolError(err), nil, err
 	}
 
 	data, _ := json.Marshal(indexes)
-	auditSuccess(h.Audit, queryID, now, "list_indexes", connID, conn.DriverName(), "", 0, 0)
-	return mcp.NewToolResultText(string(data)), nil
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "list_indexes", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: true})
+	return newToolTextResult(string(data)), nil, nil
+}
+
+// ListForeignKeysInput is the input for list_foreign_keys tool.
+type ListForeignKeysInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	Table        string `json:"table" jsonschema:"required,description=Table name"`
+	Schema       string `json:"schema" jsonschema:"description=Schema name (optional)"`
 }
 
 // ListForeignKeysHandler handles list_foreign_keys.
@@ -348,152 +367,71 @@ type ListForeignKeysHandler struct {
 	Audit   *audit.Logger
 }
 
-type foreignKeyInfo struct {
-	ConstraintName     string `json:"constraint_name"`
-	TableSchema        string `json:"table_schema,omitempty"`
-	TableName          string `json:"table_name"`
-	ColumnName         string `json:"column_name"`
-	ForeignTableSchema string `json:"foreign_table_schema,omitempty"`
-	ForeignTableName   string `json:"foreign_table_name"`
-	ForeignColumnName  string `json:"foreign_column_name"`
-	UpdateRule         string `json:"update_rule,omitempty"`
-	DeleteRule         string `json:"delete_rule,omitempty"`
+type fkInfo struct {
+	ConstraintName string `json:"constraint_name"`
+	ColumnName     string `json:"column_name"`
+	ReferencedTable string `json:"referenced_table"`
+	ReferencedColumn string `json:"referenced_column"`
 }
 
-func (h *ListForeignKeysHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *ListForeignKeysHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input ListForeignKeysInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
 
-	connID := getStringArg(args, "connection_id")
-	driverName := getStringArg(args, "driver")
-	tableName := getStringArg(args, "table")
-	schemaName := getStringArg(args, "schema")
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_foreign_keys", ConnectionID: input.ConnectionID, Driver: input.Driver})
 
-	if connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
-	}
-	if tableName == "" {
-		return toolError("400", "missing table", "table is required"), nil
-	}
-
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_foreign_keys", ConnectionID: connID, Driver: driverName})
-
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "list_foreign_keys", connID, driverName, "503", "connection not found", err)
+		return newToolError(err), nil, err
 	}
 
-	var fks []foreignKeyInfo
+	var fks []fkInfo
+	schema := input.Schema
+	if schema == "" && conn.DriverName() == "postgres" {
+		schema = "public"
+	}
+
 	switch conn.DriverName() {
 	case "postgres":
-		if schemaName == "" {
-			schemaName = "public"
-		}
-		q := `SELECT
-				kcu.constraint_name,
-				kcu.table_schema,
-				kcu.table_name,
-				kcu.column_name,
-				ccu.table_schema AS foreign_table_schema,
-				ccu.table_name AS foreign_table_name,
-				ccu.column_name AS foreign_column_name,
-				rc.update_rule,
-				rc.delete_rule
-			FROM information_schema.key_column_usage kcu
-			JOIN information_schema.referential_constraints rc
-				ON kcu.constraint_name = rc.constraint_name AND kcu.constraint_schema = rc.constraint_schema
-			JOIN information_schema.constraint_column_usage ccu
-				ON rc.unique_constraint_name = ccu.constraint_name AND rc.unique_constraint_schema = ccu.constraint_schema
-			WHERE kcu.table_schema = $1 AND kcu.table_name = $2
-			ORDER BY kcu.constraint_name`
-		rows, err := conn.QueryContext(ctx, q, schemaName, tableName)
+		q := `SELECT constraint_name, column_name, table_name, column_name FROM information_schema.key_column_usage WHERE table_name = $1 AND referenced_table_name IS NOT NULL`
+		rows, err := conn.QueryContext(ctx, q, input.Table)
 		if err != nil {
-			return auditErr(h.Audit, queryID, now, "list_foreign_keys", connID, conn.DriverName(), "503", "query failed", err)
+			return newToolError(err), nil, err
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
 		for rows.Next() {
-			var fk foreignKeyInfo
-			if err := rows.Scan(&fk.ConstraintName, &fk.TableSchema, &fk.TableName, &fk.ColumnName,
-				&fk.ForeignTableSchema, &fk.ForeignTableName, &fk.ForeignColumnName,
-				&fk.UpdateRule, &fk.DeleteRule); err != nil {
-				return auditErr(h.Audit, queryID, now, "list_foreign_keys", connID, conn.DriverName(), "500", "scan failed", err)
+			var fk fkInfo
+			if err := rows.Scan(&fk.ConstraintName, &fk.ColumnName, &fk.ReferencedTable, &fk.ReferencedColumn); err != nil {
+				return newToolError(err), nil, err
 			}
 			fks = append(fks, fk)
 		}
 		if err := rows.Err(); err != nil {
-			return auditErr(h.Audit, queryID, now, "list_foreign_keys", connID, conn.DriverName(), "500", "rows error", err)
+			return newToolError(err), nil, err
 		}
 	case "mysql":
-		q := `SELECT
-				kcu.CONSTRAINT_NAME,
-				kcu.TABLE_SCHEMA,
-				kcu.TABLE_NAME,
-				kcu.COLUMN_NAME,
-				kcu.REFERENCED_TABLE_SCHEMA,
-				kcu.REFERENCED_TABLE_NAME,
-				kcu.REFERENCED_COLUMN_NAME,
-				rc.UPDATE_RULE,
-				rc.DELETE_RULE
-			FROM information_schema.KEY_COLUMN_USAGE kcu
-			JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
-				ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = rc.CONSTRAINT_SCHEMA
-			WHERE kcu.TABLE_NAME = ? AND kcu.TABLE_SCHEMA = DATABASE()
-				AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
-			ORDER BY kcu.CONSTRAINT_NAME`
-		rows, err := conn.QueryContext(ctx, q, tableName)
+		q := `SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_NAME = %s AND REFERENCED_TABLE_NAME IS NOT NULL`
+		rows, err := conn.QueryContext(ctx, fmt.Sprintf(q, input.Table))
 		if err != nil {
-			return auditErr(h.Audit, queryID, now, "list_foreign_keys", connID, conn.DriverName(), "503", "query failed", err)
+			return newToolError(err), nil, err
 		}
-		defer func() { if err := rows.Close(); err != nil { slog.Debug("failed to close rows", "error", err) } }()
+		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
 		for rows.Next() {
-			var fk foreignKeyInfo
-			if err := rows.Scan(&fk.ConstraintName, &fk.TableSchema, &fk.TableName, &fk.ColumnName,
-				&fk.ForeignTableSchema, &fk.ForeignTableName, &fk.ForeignColumnName,
-				&fk.UpdateRule, &fk.DeleteRule); err != nil {
-				return auditErr(h.Audit, queryID, now, "list_foreign_keys", connID, conn.DriverName(), "500", "scan failed", err)
+			var fk fkInfo
+			if err := rows.Scan(&fk.ConstraintName, &fk.ColumnName, &fk.ReferencedTable, &fk.ReferencedColumn); err != nil {
+				return newToolError(err), nil, err
 			}
 			fks = append(fks, fk)
 		}
 		if err := rows.Err(); err != nil {
-			return auditErr(h.Audit, queryID, now, "list_foreign_keys", connID, conn.DriverName(), "500", "rows error", err)
+			return newToolError(err), nil, err
 		}
 	default:
-		return toolError("400", "unsupported driver", conn.DriverName()), nil
+		err := fmt.Errorf("unsupported driver: %s", conn.DriverName())
+		return newToolError(err), nil, err
 	}
 
 	data, _ := json.Marshal(fks)
-	auditSuccess(h.Audit, queryID, now, "list_foreign_keys", connID, conn.DriverName(), "", 0, 0)
-	return mcp.NewToolResultText(string(data)), nil
-}
-
-// auditErr logs a failure and returns a tool error result.
-func auditErr(logger *audit.Logger, queryID string, start time.Time, tool, connID, driver, code, msg string, err error) (*mcp.CallToolResult, error) {
-	logger.Log(audit.AuditEntry{
-		QueryID:      queryID,
-		Timestamp:    time.Now(),
-		Tool:         tool,
-		ConnectionID: connID,
-		Driver:       driver,
-		DurationMS:   time.Since(start).Milliseconds(),
-		Success:      false,
-		Error:        err.Error(),
-	})
-	return toolError(code, msg, err.Error()), nil
-}
-
-// auditSuccess logs a successful operation.
-func auditSuccess(logger *audit.Logger, queryID string, start time.Time, tool, connID, driver, query string, paramCount int, rowsAffected int64) {
-	logger.Log(audit.AuditEntry{
-		QueryID:      queryID,
-		Timestamp:    time.Now(),
-		Tool:         tool,
-		ConnectionID: connID,
-		Driver:       driver,
-		Query:        query,
-		ParamCount:   paramCount,
-		DurationMS:   time.Since(start).Milliseconds(),
-		RowsAffected: rowsAffected,
-		Success:      true,
-	})
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "list_foreign_keys", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: true})
+	return newToolTextResult(string(data)), nil, nil
 }

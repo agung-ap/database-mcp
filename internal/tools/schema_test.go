@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/agp/db-mcp/internal/db"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,9 +20,13 @@ func TestListDatabasesHandler_MissingConnectionID(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := ListDatabasesInput{
+		ConnectionID: "",
+		Driver:       "postgres",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -33,12 +38,13 @@ func TestListDatabasesHandler_UnknownConnection(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "nonexistent",
-		"driver":        "postgres",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := ListDatabasesInput{
+		ConnectionID: "nonexistent",
+		Driver:       "postgres",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -57,12 +63,13 @@ func TestListDatabasesHandler_QueryError(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := ListDatabasesInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -74,9 +81,14 @@ func TestListTablesHandler_MissingConnectionID(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := ListTablesInput{
+		ConnectionID: "",
+		Driver:       "postgres",
+		Database:     "testdb",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -88,12 +100,14 @@ func TestDescribeTableHandler_MissingTable(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := DescribeTableInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+		Table:        "",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -105,12 +119,14 @@ func TestListIndexesHandler_MissingTable(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := ListIndexesInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+		Table:        "",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -122,12 +138,14 @@ func TestListForeignKeysHandler_MissingTable(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := ListForeignKeysInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+		Table:        "",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -143,11 +161,12 @@ func TestListDatabasesHandler_UnsupportedDriver(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "oracle",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := ListDatabasesInput{
+		ConnectionID: "myconn",
+		Driver:       "oracle",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }

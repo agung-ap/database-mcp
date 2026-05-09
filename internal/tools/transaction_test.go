@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agp/db-mcp/internal/db"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -112,9 +113,10 @@ func TestBeginTransactionHandler_MissingConnectionID(t *testing.T) {
 		TxStore: ts,
 	}
 
-	req := makeCallToolRequest(map[string]any{})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := BeginTransactionInput{}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -135,12 +137,13 @@ func TestBeginTransactionHandler_DBError(t *testing.T) {
 		TxStore: ts,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := BeginTransactionInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -153,11 +156,12 @@ func TestCommitTransactionHandler_NotFound(t *testing.T) {
 		TxStore: ts,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"tx_id": "nonexistent-uuid",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := CommitTransactionInput{
+		TxID: "nonexistent-uuid",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -170,11 +174,12 @@ func TestRollbackTransactionHandler_NotFound(t *testing.T) {
 		TxStore: ts,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"tx_id": "nonexistent-uuid",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := RollbackTransactionInput{
+		TxID: "nonexistent-uuid",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -187,9 +192,10 @@ func TestCommitTransactionHandler_MissingTxID(t *testing.T) {
 		TxStore: ts,
 	}
 
-	req := makeCallToolRequest(map[string]any{})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := CommitTransactionInput{}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -202,8 +208,9 @@ func TestRollbackTransactionHandler_MissingTxID(t *testing.T) {
 		TxStore: ts,
 	}
 
-	req := makeCallToolRequest(map[string]any{})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := RollbackTransactionInput{}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }

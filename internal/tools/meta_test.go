@@ -3,13 +3,12 @@ package tools
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"testing"
 
 	"github.com/agp/db-mcp/internal/audit"
 	"github.com/agp/db-mcp/internal/db"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,24 +40,16 @@ func newMockManager(drivers map[string]db.Driver) *mockManager {
 	return &mockManager{drivers: drivers}
 }
 
-func makeCallToolRequest(args map[string]any) mcp.CallToolRequest {
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
-	return req
-}
-
 // resultText extracts the text from the first content item of a CallToolResult.
 func resultText(result *mcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
 	switch v := result.Content[0].(type) {
-	case mcp.TextContent:
+	case *mcp.TextContent:
 		return v.Text
-	case mcp.EmbeddedResource:
-		return fmt.Sprintf("%v", v)
 	}
-	return fmt.Sprintf("%v", result.Content[0])
+	return ""
 }
 
 func TestListConnectionsHandler_Handle(t *testing.T) {
@@ -72,8 +63,8 @@ func TestListConnectionsHandler_Handle(t *testing.T) {
 		Audit: auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{})
-	result, err := h.Handle(context.Background(), req)
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -98,11 +89,12 @@ func TestTestConnectionHandler_Handle_Success(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-	})
-	result, err := h.Handle(context.Background(), req)
+	input := TestConnectionInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -120,9 +112,10 @@ func TestTestConnectionHandler_Handle_MissingConnectionID(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := TestConnectionInput{}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
 }
@@ -135,12 +128,13 @@ func TestTestConnectionHandler_Handle_UnknownConnection(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "nonexistent",
-		"driver":        "postgres",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := TestConnectionInput{
+		ConnectionID: "nonexistent",
+		Driver:       "postgres",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
 }
@@ -158,12 +152,13 @@ func TestTestConnectionHandler_Handle_PingError(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := TestConnectionInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
 }

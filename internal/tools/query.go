@@ -10,8 +10,17 @@ import (
 
 	"github.com/agp/db-mcp/internal/audit"
 	"github.com/google/uuid"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// ExecuteQueryInput is the input for execute_query tool.
+type ExecuteQueryInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	Query        string `json:"query" jsonschema:"required,description=SQL query to execute"`
+	Params       []any  `json:"params" jsonschema:"description=Query parameters (optional)"`
+	Limit        int    `json:"limit" jsonschema:"description=Max rows to return (default 100)"`
+}
 
 // ExecuteQueryHandler handles the execute_query tool.
 type ExecuteQueryHandler struct {
@@ -19,71 +28,58 @@ type ExecuteQueryHandler struct {
 	Audit   *audit.Logger
 }
 
-func (h *ExecuteQueryHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *ExecuteQueryHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input ExecuteQueryInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
-
-	connID := getStringArg(args, "connection_id")
-	driverName := getStringArg(args, "driver")
-	query := getStringArg(args, "query")
-	params := getSliceArg(args, "params")
-	limit := clampLimit(getIntArg(args, "limit", DefaultRowLimit))
-
-	if connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
-	}
-	if query == "" {
-		return toolError("400", "missing query", "query is required"), nil
-	}
+	limit := clampLimit(input.Limit)
 
 	h.Audit.Log(audit.AuditEntry{
 		QueryID:      queryID,
 		Timestamp:    now,
 		Tool:         "execute_query",
-		ConnectionID: connID,
-		Driver:       driverName,
-		Query:        query,
-		ParamCount:   len(params),
+		ConnectionID: input.ConnectionID,
+		Driver:       input.Driver,
+		Query:        input.Query,
+		ParamCount:   len(input.Params),
 	})
 
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "execute_query", connID, driverName, "503", "connection not found", err)
+		h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "execute_query", ConnectionID: input.ConnectionID, Driver: input.Driver, DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+		return newToolError(err), nil, err
 	}
 
-	// Wrap in a read-only transaction
+	// Wrap in read-only transaction
 	tx, err := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: false})
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "execute_query", connID, conn.DriverName(), "503", "begin transaction failed", err)
+		h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "execute_query", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+		return newToolError(err), nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	// Set read-only mode
 	switch conn.DriverName() {
 	case "postgres":
-		if _, err := tx.ExecContext(ctx, "SET TRANSACTION READ ONLY"); err != nil {
-			return auditErr(h.Audit, queryID, now, "execute_query", connID, conn.DriverName(), "503", "set read only failed", err)
-		}
+		_, _ = tx.ExecContext(ctx, "SET TRANSACTION READ ONLY")
 	case "mysql":
-		if _, err := tx.ExecContext(ctx, "SET SESSION TRANSACTION READ ONLY"); err != nil {
-			return auditErr(h.Audit, queryID, now, "execute_query", connID, conn.DriverName(), "503", "set read only failed", err)
-		}
+		_, _ = tx.ExecContext(ctx, "SET SESSION TRANSACTION READ ONLY")
 	}
 
-	rows, err := tx.QueryContext(ctx, query, params...)
+	rows, err := tx.QueryContext(ctx, input.Query, input.Params...)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "execute_query", connID, conn.DriverName(), "503", "query failed", err)
+		h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "execute_query", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+		return newToolError(err), nil, err
 	}
 	defer func() {
-		if err := rows.Close(); err != nil {
-			slog.Debug("failed to close query rows", "query_id", queryID, "error", err)
+		if e := rows.Close(); e != nil {
+			slog.Debug("failed to close rows", "error", e)
 		}
 	}()
 
 	cols, err := rows.Columns()
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "execute_query", connID, conn.DriverName(), "500", "columns failed", err)
+		h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "execute_query", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+		return newToolError(err), nil, err
 	}
 
 	var result []map[string]any
@@ -95,11 +91,11 @@ func (h *ExecuteQueryHandler) Handle(ctx context.Context, req mcp.CallToolReques
 			ptrs[i] = &vals[i]
 		}
 		if err := rows.Scan(ptrs...); err != nil {
-			return auditErr(h.Audit, queryID, now, "execute_query", connID, conn.DriverName(), "500", "scan failed", err)
+			h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "execute_query", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+			return newToolError(err), nil, err
 		}
 		row := make(map[string]any, len(cols))
 		for i, col := range cols {
-			// Convert []byte to string for readability
 			if b, ok := vals[i].([]byte); ok {
 				row[col] = string(b)
 			} else {
@@ -110,7 +106,8 @@ func (h *ExecuteQueryHandler) Handle(ctx context.Context, req mcp.CallToolReques
 		rowCount++
 	}
 	if err := rows.Err(); err != nil {
-		return auditErr(h.Audit, queryID, now, "execute_query", connID, conn.DriverName(), "500", "rows error", err)
+		h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "execute_query", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+		return newToolError(err), nil, err
 	}
 
 	if result == nil {
@@ -118,8 +115,17 @@ func (h *ExecuteQueryHandler) Handle(ctx context.Context, req mcp.CallToolReques
 	}
 
 	data, _ := json.Marshal(result)
-	auditSuccess(h.Audit, queryID, now, "execute_query", connID, conn.DriverName(), query, len(params), int64(rowCount))
-	return mcp.NewToolResultText(string(data)), nil
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "execute_query", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: true, RowsAffected: int64(rowCount)})
+	return newToolTextResult(string(data)), nil, nil
+}
+
+// ExecuteMutationInput is the input for execute_mutation tool.
+type ExecuteMutationInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	Query        string `json:"query" jsonschema:"required,description=SQL mutation to execute"`
+	Params       []any  `json:"params" jsonschema:"description=Query parameters (optional)"`
+	Confirm      bool   `json:"confirm" jsonschema:"required,description=Must be true to execute mutation"`
 }
 
 // ExecuteMutationHandler handles the execute_mutation tool.
@@ -128,55 +134,51 @@ type ExecuteMutationHandler struct {
 	Audit   *audit.Logger
 }
 
-func (h *ExecuteMutationHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *ExecuteMutationHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input ExecuteMutationInput) (*mcp.CallToolResult, any, error) {
+	// Check confirm gate FIRST
+	if !input.Confirm {
+		err := fmt.Errorf("mutation requires confirm: true")
+		return newToolError(err), nil, err
+	}
+
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
-
-	// Check confirm gate FIRST, before any DB call
-	confirm := getBoolArg(args, "confirm")
-	if !confirm {
-		return toolError("422", "mutation requires confirm: true", "set confirm=true explicitly to proceed"), nil
-	}
-
-	connID := getStringArg(args, "connection_id")
-	driverName := getStringArg(args, "driver")
-	query := getStringArg(args, "query")
-	params := getSliceArg(args, "params")
-
-	if connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
-	}
-	if query == "" {
-		return toolError("400", "missing query", "query is required"), nil
-	}
 
 	h.Audit.Log(audit.AuditEntry{
 		QueryID:      queryID,
 		Timestamp:    now,
 		Tool:         "execute_mutation",
-		ConnectionID: connID,
-		Driver:       driverName,
-		Query:        query,
-		ParamCount:   len(params),
+		ConnectionID: input.ConnectionID,
+		Driver:       input.Driver,
+		Query:        input.Query,
+		ParamCount:   len(input.Params),
 	})
 
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "execute_mutation", connID, driverName, "503", "connection not found", err)
+		h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "execute_mutation", ConnectionID: input.ConnectionID, Driver: input.Driver, DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+		return newToolError(err), nil, err
 	}
 
-	sqlResult, err := conn.ExecContext(ctx, query, params...)
+	sqlResult, err := conn.ExecContext(ctx, input.Query, input.Params...)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "execute_mutation", connID, conn.DriverName(), "503", "exec failed", err)
+		h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "execute_mutation", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+		return newToolError(err), nil, err
 	}
 
 	rowsAffected, _ := sqlResult.RowsAffected()
-
-	auditSuccess(h.Audit, queryID, now, "execute_mutation", connID, conn.DriverName(), query, len(params), rowsAffected)
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "execute_mutation", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: true, RowsAffected: rowsAffected})
 
 	resp := fmt.Sprintf(`{"rows_affected":%d}`, rowsAffected)
-	return mcp.NewToolResultText(resp), nil
+	return newToolTextResult(resp), nil, nil
+}
+
+// ExplainQueryInput is the input for explain_query tool.
+type ExplainQueryInput struct {
+	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
+	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	Query        string `json:"query" jsonschema:"required,description=SQL query to explain"`
+	Params       []any  `json:"params" jsonschema:"description=Query parameters (optional)"`
 }
 
 // ExplainQueryHandler handles the explain_query tool.
@@ -185,68 +187,60 @@ type ExplainQueryHandler struct {
 	Audit   *audit.Logger
 }
 
-func (h *ExplainQueryHandler) Handle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *ExplainQueryHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input ExplainQueryInput) (*mcp.CallToolResult, any, error) {
 	queryID := uuid.NewString()
 	now := time.Now()
-	args := req.Params.Arguments
-
-	connID := getStringArg(args, "connection_id")
-	driverName := getStringArg(args, "driver")
-	query := getStringArg(args, "query")
-	params := getSliceArg(args, "params")
-
-	if connID == "" {
-		return toolError("400", "missing connection_id", "connection_id is required"), nil
-	}
-	if query == "" {
-		return toolError("400", "missing query", "query is required"), nil
-	}
 
 	h.Audit.Log(audit.AuditEntry{
 		QueryID:      queryID,
 		Timestamp:    now,
 		Tool:         "explain_query",
-		ConnectionID: connID,
-		Driver:       driverName,
-		Query:        query,
-		ParamCount:   len(params),
+		ConnectionID: input.ConnectionID,
+		Driver:       input.Driver,
+		Query:        input.Query,
+		ParamCount:   len(input.Params),
 	})
 
-	conn, err := h.Manager.Get(connID)
+	conn, err := h.Manager.Get(input.ConnectionID)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "explain_query", connID, driverName, "503", "connection not found", err)
+		h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "explain_query", ConnectionID: input.ConnectionID, Driver: input.Driver, DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+		return newToolError(err), nil, err
 	}
 
 	var explainQuery string
 	switch conn.DriverName() {
 	case "postgres":
-		explainQuery = "EXPLAIN (FORMAT JSON) " + query
+		explainQuery = "EXPLAIN (FORMAT JSON) " + input.Query
 	case "mysql":
-		explainQuery = "EXPLAIN FORMAT=JSON " + query
+		explainQuery = "EXPLAIN FORMAT=JSON " + input.Query
 	default:
-		return toolError("400", "unsupported driver", conn.DriverName()), nil
+		err := fmt.Errorf("unsupported driver: %s", conn.DriverName())
+		return newToolError(err), nil, err
 	}
 
-	rows, err := conn.QueryContext(ctx, explainQuery, params...)
+	rows, err := conn.QueryContext(ctx, explainQuery, input.Params...)
 	if err != nil {
-		return auditErr(h.Audit, queryID, now, "explain_query", connID, conn.DriverName(), "503", "explain failed", err)
+		h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "explain_query", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+		return newToolError(err), nil, err
 	}
 	defer func() {
-		if err := rows.Close(); err != nil {
-			slog.Debug("failed to close explain rows", "query_id", queryID, "error", err)
+		if e := rows.Close(); e != nil {
+			slog.Debug("failed to close rows", "error", e)
 		}
 	}()
 
 	var plan string
 	if rows.Next() {
 		if err := rows.Scan(&plan); err != nil {
-			return auditErr(h.Audit, queryID, now, "explain_query", connID, conn.DriverName(), "500", "scan failed", err)
+			h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "explain_query", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+			return newToolError(err), nil, err
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return auditErr(h.Audit, queryID, now, "explain_query", connID, conn.DriverName(), "500", "rows error", err)
+		h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "explain_query", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: false, Error: err.Error()})
+		return newToolError(err), nil, err
 	}
 
-	auditSuccess(h.Audit, queryID, now, "explain_query", connID, conn.DriverName(), query, len(params), 0)
-	return mcp.NewToolResultText(plan), nil
+	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: time.Now(), Tool: "explain_query", ConnectionID: input.ConnectionID, Driver: conn.DriverName(), DurationMS: time.Since(now).Milliseconds(), Success: true})
+	return newToolTextResult(plan), nil, nil
 }

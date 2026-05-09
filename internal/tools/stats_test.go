@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/agp/db-mcp/internal/db"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,11 +20,12 @@ func TestGetTableStatsHandler_MissingConnectionID(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"table": "users",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := GetTableStatsInput{
+		Table: "users",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -35,12 +37,13 @@ func TestGetTableStatsHandler_MissingTable(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := GetTableStatsInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -52,13 +55,14 @@ func TestGetTableStatsHandler_UnknownConnection(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "nonexistent",
-		"driver":        "postgres",
-		"table":         "users",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := GetTableStatsInput{
+		ConnectionID: "nonexistent",
+		Driver:       "postgres",
+		Table:        "users",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -77,13 +81,14 @@ func TestGetTableStatsHandler_QueryError(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-		"table":         "users",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := GetTableStatsInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+		Table:        "users",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -99,12 +104,13 @@ func TestGetTableStatsHandler_UnsupportedDriver(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "oracle",
-		"table":         "users",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := GetTableStatsInput{
+		ConnectionID: "myconn",
+		Driver:       "oracle",
+		Table:        "users",
+	}
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/agp/db-mcp/internal/db"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -76,8 +77,7 @@ func openTestDB(t *testing.T) *sql.DB {
 func TestExecuteQueryHandler_ReadOnlyTx(t *testing.T) {
 	auditLogger := newTestAuditLogger(t)
 
-	var readOnlySet bool
-	var execQueries []string
+	var beginTxCalled bool
 
 	// Track calls: BeginTx returns a fake tx, ExecContext records the SET command
 	testDB := openTestDB(t)
@@ -85,35 +85,25 @@ func TestExecuteQueryHandler_ReadOnlyTx(t *testing.T) {
 	mock := &db.MockDriver{
 		DriverNameFn: func() string { return "postgres" },
 		BeginTxFn: func(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+			beginTxCalled = true
 			return testDB.BeginTx(ctx, opts)
 		},
 	}
-
-	// We need to intercept the ExecContext on the transaction to verify SET TRANSACTION READ ONLY.
-	// Since we use a real *sql.Tx from testDB, let's use a different approach:
-	// verify that BeginTx was called and ExecContext was called with the right query.
-	var beginTxCalled bool
-	mock.BeginTxFn = func(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-		beginTxCalled = true
-		return testDB.BeginTx(ctx, opts)
-	}
-
-	_ = execQueries
-	_ = readOnlySet
 
 	h := &ExecuteQueryHandler{
 		Manager: newMockManager(map[string]db.Driver{"myconn": mock}),
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-		"query":         "SELECT 1",
-		"limit":         float64(10),
-	})
+	input := ExecuteQueryInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+		Query:        "SELECT 1",
+		Limit:        10,
+	}
 
-	result, err := h.Handle(context.Background(), req)
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
 	require.NoError(t, err)
 	// Should have called BeginTx
 	assert.True(t, beginTxCalled, "BeginTx should have been called")
@@ -129,11 +119,13 @@ func TestExecuteQueryHandler_MissingConnectionID(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"query": "SELECT 1",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := ExecuteQueryInput{
+		Query: "SELECT 1",
+	}
+
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -145,11 +137,13 @@ func TestExecuteQueryHandler_MissingQuery(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-	})
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	input := ExecuteQueryInput{
+		ConnectionID: "myconn",
+	}
+
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -168,14 +162,15 @@ func TestExecuteQueryHandler_DBError(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-		"query":         "SELECT 1",
-	})
+	input := ExecuteQueryInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+		Query:        "SELECT 1",
+	}
 
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 }
 
@@ -195,22 +190,23 @@ func TestExecuteMutationHandler_ConfirmFalse(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-		"query":         "DELETE FROM users",
-		"confirm":       false,
-	})
+	input := ExecuteMutationInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+		Query:        "DELETE FROM users",
+		Confirm:      false,
+	}
 
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	// Must be rejected
 	assert.True(t, result.IsError)
 	// ExecContext must NOT have been called
 	assert.False(t, execCalled, "ExecContext should not be called when confirm=false")
 
 	text := resultText(result)
-	assert.Contains(t, text, "422")
+	assert.Contains(t, text, "error")
 }
 
 func TestExecuteMutationHandler_ConfirmTrue(t *testing.T) {
@@ -228,14 +224,15 @@ func TestExecuteMutationHandler_ConfirmTrue(t *testing.T) {
 		Audit:   auditLogger,
 	}
 
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-		"query":         "DELETE FROM users WHERE id > 0",
-		"confirm":       true,
-	})
+	input := ExecuteMutationInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+		Query:        "DELETE FROM users WHERE id > 0",
+		Confirm:      true,
+	}
 
-	result, err := h.Handle(context.Background(), req)
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
 	require.NoError(t, err)
 	require.False(t, result.IsError)
 
@@ -260,14 +257,15 @@ func TestExecuteMutationHandler_MissingConfirm(t *testing.T) {
 	}
 
 	// confirm is absent (defaults to false)
-	req := makeCallToolRequest(map[string]any{
-		"connection_id": "myconn",
-		"driver":        "postgres",
-		"query":         "DELETE FROM users",
-	})
+	input := ExecuteMutationInput{
+		ConnectionID: "myconn",
+		Driver:       "postgres",
+		Query:        "DELETE FROM users",
+	}
 
-	result, err := h.Handle(context.Background(), req)
-	require.NoError(t, err)
+	req := &mcp.CallToolRequest{}
+	result, _, err := h.Handle(context.Background(), req, input)
+	require.Error(t, err)
 	assert.True(t, result.IsError)
 	assert.False(t, execCalled)
 }
