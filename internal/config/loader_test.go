@@ -25,8 +25,8 @@ func TestExpandHome(t *testing.T) {
 		},
 		{
 			name:     "without tilde",
-			input:    "/etc/db-mcp/config.yaml",
-			expected: "/etc/db-mcp/config.yaml",
+			input:    "/etc/db-mcp/config.json",
+			expected: "/etc/db-mcp/config.json",
 		},
 		{
 			name:     "relative path",
@@ -54,13 +54,13 @@ func TestExpandEnvVars(t *testing.T) {
 	}{
 		{
 			name:     "with env var",
-			input:    "password: ${TEST_PASSWORD}",
-			expected: "password: secret123",
+			input:    `"password": "${TEST_PASSWORD}"`,
+			expected: `"password": "secret123"`,
 		},
 		{
 			name:     "without env var",
-			input:    "password: hardcoded",
-			expected: "password: hardcoded",
+			input:    `"password": "hardcoded"`,
+			expected: `"password": "hardcoded"`,
 		},
 	}
 
@@ -73,7 +73,7 @@ func TestExpandEnvVars(t *testing.T) {
 }
 
 func TestFileExists(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "test_config*.yaml")
+	tmpFile, err := os.CreateTemp("", "test_config*.json")
 	require.NoError(t, err)
 	tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
@@ -90,7 +90,7 @@ func TestFileExists(t *testing.T) {
 		},
 		{
 			name:     "non-existing file",
-			path:     "/nonexistent/path/to/file.yaml",
+			path:     "/nonexistent/path/to/file.json",
 			expected: false,
 		},
 	}
@@ -103,25 +103,29 @@ func TestFileExists(t *testing.T) {
 	}
 }
 
-func TestLoadFromPathYAML(t *testing.T) {
-	yamlContent := `version: "1.0"
-default_connection: "test_db"
-databases:
-  - name: "test_db"
-    engine: "postgres"
-    host: "localhost"
-    port: 5432
-    username: "testuser"
-    password: "testpass"
-    database: "testdb"
-    ssl_mode: "disable"
-`
+func TestLoadFromPathJSON(t *testing.T) {
+	jsonContent := `{
+  "version": "1.0",
+  "default_connection": "test_db",
+  "databases": [
+    {
+      "name": "test_db",
+      "engine": "postgres",
+      "host": "localhost",
+      "port": 5432,
+      "username": "testuser",
+      "password": "testpass",
+      "database": "testdb",
+      "ssl_mode": "disable"
+    }
+  ]
+}`
 
-	tmpFile, err := os.CreateTemp("", "test_config*.yaml")
+	tmpFile, err := os.CreateTemp("", "test_config*.json")
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
-	err = os.WriteFile(tmpFile.Name(), []byte(yamlContent), 0o644)
+	err = os.WriteFile(tmpFile.Name(), []byte(jsonContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, usedPath, err := LoadFromPath(tmpFile.Name())
@@ -137,7 +141,7 @@ databases:
 	assert.Equal(t, 5432, cfg.Databases[0].Port)
 }
 
-func TestLoadFromPathJSON(t *testing.T) {
+func TestLoadFromPathMySQLJSON(t *testing.T) {
 	jsonContent := `{
   "version": "1.0",
   "default_connection": "test_db",
@@ -178,22 +182,26 @@ func TestLoadFromPathEnvVarSubstitution(t *testing.T) {
 	defer os.Unsetenv("DB_PASSWORD")
 	defer os.Unsetenv("DB_USERNAME")
 
-	yamlContent := `version: "1.0"
-databases:
-  - name: "test_db"
-    engine: "postgres"
-    host: "localhost"
-    port: 5432
-    username: "${DB_USERNAME}"
-    password: "${DB_PASSWORD}"
-    database: "testdb"
-`
+	jsonContent := `{
+  "version": "1.0",
+  "databases": [
+    {
+      "name": "test_db",
+      "engine": "postgres",
+      "host": "localhost",
+      "port": 5432,
+      "username": "${DB_USERNAME}",
+      "password": "${DB_PASSWORD}",
+      "database": "testdb"
+    }
+  ]
+}`
 
-	tmpFile, err := os.CreateTemp("", "test_config*.yaml")
+	tmpFile, err := os.CreateTemp("", "test_config*.json")
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
-	err = os.WriteFile(tmpFile.Name(), []byte(yamlContent), 0o644)
+	err = os.WriteFile(tmpFile.Name(), []byte(jsonContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, _, err := LoadFromPath(tmpFile.Name())
@@ -204,30 +212,34 @@ databases:
 }
 
 func TestLoadFromPathMissingFile(t *testing.T) {
-	cfg, _, err := LoadFromPath("/nonexistent/path/to/file.yaml")
+	cfg, _, err := LoadFromPath("/nonexistent/path/to/file.json")
 	assert.Error(t, err)
 	assert.Nil(t, cfg)
 	assert.Contains(t, err.Error(), "config: read")
 }
 
 func TestBackwardCompatibilityLoad(t *testing.T) {
-	yamlContent := `version: "1.0"
-default_connection: "test_db"
-databases:
-  - name: "test_db"
-    engine: "postgres"
-    host: "localhost"
-    port: 5432
-    username: "testuser"
-    password: "testpass"
-    database: "testdb"
-`
+	jsonContent := `{
+  "version": "1.0",
+  "default_connection": "test_db",
+  "databases": [
+    {
+      "name": "test_db",
+      "engine": "postgres",
+      "host": "localhost",
+      "port": 5432,
+      "username": "testuser",
+      "password": "testpass",
+      "database": "testdb"
+    }
+  ]
+}`
 
-	tmpFile, err := os.CreateTemp("", "test_config*.yaml")
+	tmpFile, err := os.CreateTemp("", "test_config*.json")
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
-	err = os.WriteFile(tmpFile.Name(), []byte(yamlContent), 0o644)
+	err = os.WriteFile(tmpFile.Name(), []byte(jsonContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(tmpFile.Name())
