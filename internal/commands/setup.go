@@ -12,17 +12,21 @@ import (
 
 // SetupCommand returns the setup CLI command.
 func SetupCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "setup",
-		Usage:     "Interactive setup wizard for database connections",
-		UsageText: "db-mcp setup [options]",
-		Description: `Run the interactive setup wizard to configure database connections.
+	const Description string = `
+		Run the interactive setup wizard to configure database connections.
 
-The wizard will:
-  1. Prompt for database configurations (PostgreSQL, MySQL, SQLite)
-  2. Test each connection for validity
-  3. Save configuration to file
-  4. Register db-mcp with AI agents (Claude Desktop, Claude Code, Cursor)`,
+		The wizard will:
+		  1. Prompt for database configurations (PostgreSQL, MySQL)
+		  2. Test each connection for validity
+		  3. Save configuration to file
+		  4. Register db-mcp with AI agents (Claude Code, Cursor)
+	`
+
+	return &cli.Command{
+		Name:        "setup",
+		Usage:       "Interactive setup wizard for database connections",
+		UsageText:   "db-mcp setup [options]",
+		Description: Description,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "config",
