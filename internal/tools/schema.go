@@ -307,17 +307,17 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, req *mcp.CallToolReques
 
 	switch conn.DriverName() {
 	case "postgres":
-		q := `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = $1`
-		if schema != "" {
-			q += ` AND schemaname = $2`
-		}
-		var rows *sql.Rows
-		var queryErr error
-		if schema != "" {
-			rows, queryErr = conn.QueryContext(ctx, q, input.Table, schema)
-		} else {
-			rows, queryErr = conn.QueryContext(ctx, q, input.Table)
-		}
+		q := `
+			SELECT i.relname, a.attname,
+				ix.indisunique, ix.indisprimary
+			FROM pg_index ix
+			JOIN pg_class t  ON t.oid  = ix.indrelid
+			JOIN pg_class i  ON i.oid  = ix.indexrelid
+			JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+			JOIN pg_namespace n ON n.oid = t.relnamespace
+			WHERE t.relname = $1 AND n.nspname = $2
+			ORDER BY i.relname, a.attnum`
+		rows, queryErr := conn.QueryContext(ctx, q, input.Table, schema)
 		if queryErr != nil {
 			return newToolError(queryErr), nil, queryErr
 		}
@@ -327,11 +327,11 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, req *mcp.CallToolReques
 			}
 		}()
 		for rows.Next() {
-			var indexName, indexDef string
-			if err := rows.Scan(&indexName, &indexDef); err != nil {
+			var idx indexInfo
+			if err := rows.Scan(&idx.IndexName, &idx.ColumnName, &idx.IsUnique, &idx.IsPrimary); err != nil {
 				return newToolError(err), nil, err
 			}
-			indexes = append(indexes, indexInfo{IndexName: indexName, ColumnName: "see indexdef"})
+			indexes = append(indexes, idx)
 		}
 		if err := rows.Err(); err != nil {
 			return newToolError(err), nil, err
@@ -419,8 +419,21 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, req *mcp.CallToolRe
 
 	switch conn.DriverName() {
 	case "postgres":
-		q := `SELECT constraint_name, column_name, table_name, column_name FROM information_schema.key_column_usage WHERE table_name = $1 AND referenced_table_name IS NOT NULL`
-		rows, err := conn.QueryContext(ctx, q, input.Table)
+		q := `
+			SELECT kcu.constraint_name, kcu.column_name, ccu.table_name, ccu.column_name
+			FROM information_schema.key_column_usage kcu
+			JOIN information_schema.referential_constraints rc
+				ON kcu.constraint_name = rc.constraint_name
+				AND kcu.constraint_schema = rc.constraint_schema
+			JOIN information_schema.constraint_column_usage ccu
+				ON rc.unique_constraint_name = ccu.constraint_name
+				AND rc.unique_constraint_schema = ccu.constraint_schema
+			WHERE kcu.table_name = $1 AND kcu.table_schema = $2`
+		schema := input.Schema
+		if schema == "" {
+			schema = "public"
+		}
+		rows, err := conn.QueryContext(ctx, q, input.Table, schema)
 		if err != nil {
 			return newToolError(err), nil, err
 		}
@@ -440,8 +453,8 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, req *mcp.CallToolRe
 			return newToolError(err), nil, err
 		}
 	case "mysql":
-		q := `SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_NAME = %s AND REFERENCED_TABLE_NAME IS NOT NULL`
-		rows, err := conn.QueryContext(ctx, fmt.Sprintf(q, input.Table))
+		q := `SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL`
+		rows, err := conn.QueryContext(ctx, q, input.Table)
 		if err != nil {
 			return newToolError(err), nil, err
 		}

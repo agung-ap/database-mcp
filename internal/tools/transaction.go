@@ -147,7 +147,7 @@ func (h *BeginTransactionHandler) Handle(ctx context.Context, req *mcp.CallToolR
 		return newToolError(err), nil, err
 	}
 
-	tx, err := conn.BeginTx(ctx, &sql.TxOptions{})
+	tx, err := conn.BeginTx(context.Background(), &sql.TxOptions{})
 	if err != nil {
 		h.Audit.Log(audit.AuditEntry{
 			QueryID:      queryID,
