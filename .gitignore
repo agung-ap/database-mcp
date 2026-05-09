@@ -8,3 +8,4 @@ bin/
 CLAUDE.md
 audit.log
 .mcp.json
+config/connections.json
