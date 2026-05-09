@@ -26,10 +26,10 @@ type TableStats struct {
 
 // GetTableStatsInput is the input for get_table_stats tool.
 type GetTableStatsInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
-	Table        string `json:"table" jsonschema:"required,description=Table name"`
-	Schema       string `json:"schema" jsonschema:"description=Schema name (default: public for PostgreSQL)"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
+	Table        string `json:"table"`
+	Schema       string `json:"schema"`
 }
 
 // GetTableStatsHandler handles the get_table_stats tool.

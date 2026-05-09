@@ -21,8 +21,8 @@ type DBManager interface {
 
 // ListDatabasesInput is the input for list_databases tool.
 type ListDatabasesInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
 }
 
 // ListDatabasesHandler handles list_databases.
@@ -82,9 +82,9 @@ func (h *ListDatabasesHandler) Handle(ctx context.Context, req *mcp.CallToolRequ
 
 // ListTablesInput is the input for list_tables tool.
 type ListTablesInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
-	Database     string `json:"database" jsonschema:"description=Database name (optional)"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
+	Database     string `json:"database"`
 }
 
 // ListTablesHandler handles list_tables.
@@ -165,10 +165,10 @@ func (h *ListTablesHandler) Handle(ctx context.Context, req *mcp.CallToolRequest
 
 // DescribeTableInput is the input for describe_table tool.
 type DescribeTableInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
-	Table        string `json:"table" jsonschema:"required,description=Table name"`
-	Schema       string `json:"schema" jsonschema:"description=Schema name (optional, default: public for postgres)"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
+	Table        string `json:"table"`
+	Schema       string `json:"schema"`
 }
 
 // DescribeTableHandler handles describe_table.
@@ -269,10 +269,10 @@ func (h *DescribeTableHandler) Handle(ctx context.Context, req *mcp.CallToolRequ
 
 // ListIndexesInput is the input for list_indexes tool.
 type ListIndexesInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
-	Table        string `json:"table" jsonschema:"required,description=Table name"`
-	Schema       string `json:"schema" jsonschema:"description=Schema name (optional)"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
+	Table        string `json:"table"`
+	Schema       string `json:"schema"`
 }
 
 // ListIndexesHandler handles list_indexes.
@@ -383,10 +383,10 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, req *mcp.CallToolReques
 
 // ListForeignKeysInput is the input for list_foreign_keys tool.
 type ListForeignKeysInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
-	Table        string `json:"table" jsonschema:"required,description=Table name"`
-	Schema       string `json:"schema" jsonschema:"description=Schema name (optional)"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
+	Table        string `json:"table"`
+	Schema       string `json:"schema"`
 }
 
 // ListForeignKeysHandler handles list_foreign_keys.

@@ -104,8 +104,8 @@ func (ts *TxStore) RollbackAll() {
 
 // BeginTransactionInput is the input for begin_transaction tool.
 type BeginTransactionInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
 }
 
 // BeginTransactionHandler handles the begin_transaction tool.
@@ -180,7 +180,7 @@ func (h *BeginTransactionHandler) Handle(ctx context.Context, req *mcp.CallToolR
 
 // CommitTransactionInput is the input for commit_transaction tool.
 type CommitTransactionInput struct {
-	TxID string `json:"tx_id" jsonschema:"required,description=Transaction ID returned by begin_transaction"`
+	TxID string `json:"tx_id"`
 }
 
 // CommitTransactionHandler handles the commit_transaction tool.
@@ -248,7 +248,7 @@ func (h *CommitTransactionHandler) Handle(ctx context.Context, req *mcp.CallTool
 
 // RollbackTransactionInput is the input for rollback_transaction tool.
 type RollbackTransactionInput struct {
-	TxID string `json:"tx_id" jsonschema:"required,description=Transaction ID returned by begin_transaction"`
+	TxID string `json:"tx_id"`
 }
 
 // RollbackTransactionHandler handles the rollback_transaction tool.

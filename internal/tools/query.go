@@ -15,11 +15,11 @@ import (
 
 // ExecuteQueryInput is the input for execute_query tool.
 type ExecuteQueryInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
-	Query        string `json:"query" jsonschema:"required,description=SQL query to execute"`
-	Params       []any  `json:"params" jsonschema:"description=Query parameters (optional)"`
-	Limit        int    `json:"limit" jsonschema:"description=Max rows to return (default 100)"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
+	Query        string `json:"query"`
+	Params       []any  `json:"params"`
+	Limit        int    `json:"limit"`
 }
 
 // ExecuteQueryHandler handles the execute_query tool.
@@ -121,11 +121,11 @@ func (h *ExecuteQueryHandler) Handle(ctx context.Context, req *mcp.CallToolReque
 
 // ExecuteMutationInput is the input for execute_mutation tool.
 type ExecuteMutationInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
-	Query        string `json:"query" jsonschema:"required,description=SQL mutation to execute"`
-	Params       []any  `json:"params" jsonschema:"description=Query parameters (optional)"`
-	Confirm      bool   `json:"confirm" jsonschema:"required,description=Must be true to execute mutation"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
+	Query        string `json:"query"`
+	Params       []any  `json:"params"`
+	Confirm      bool   `json:"confirm"`
 }
 
 // ExecuteMutationHandler handles the execute_mutation tool.
@@ -175,10 +175,10 @@ func (h *ExecuteMutationHandler) Handle(ctx context.Context, req *mcp.CallToolRe
 
 // ExplainQueryInput is the input for explain_query tool.
 type ExplainQueryInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
-	Query        string `json:"query" jsonschema:"required,description=SQL query to explain"`
-	Params       []any  `json:"params" jsonschema:"description=Query parameters (optional)"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
+	Query        string `json:"query"`
+	Params       []any  `json:"params"`
 }
 
 // ExplainQueryHandler handles the explain_query tool.

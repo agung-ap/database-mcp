@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "default_connection": "test_postgres",
+  "databases": [
+    {
+      "name": "test_postgres",
+      "engine": "postgres",
+      "host": "localhost",
+      "port": 5432,
+      "username": "postgres",
+      "password": "postgres",
+      "database": "postgres",
+      "ssl_mode": "disable",
+      "max_connections": 10,
+      "min_connections": 2,
+      "connect_timeout_secs": 30
+    }
+  ]
+}

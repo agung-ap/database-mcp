@@ -62,8 +62,8 @@ func (h *ListConnectionsHandler) Handle(ctx context.Context, req *mcp.CallToolRe
 
 // TestConnectionInput is the input for test_connection tool.
 type TestConnectionInput struct {
-	ConnectionID string `json:"connection_id" jsonschema:"required,description=Named connection alias from config"`
-	Driver       string `json:"driver" jsonschema:"required,description=Database driver"`
+	ConnectionID string `json:"connection_id"`
+	Driver       string `json:"driver"`
 }
 
 // TestConnectionHandler handles the test_connection tool.
