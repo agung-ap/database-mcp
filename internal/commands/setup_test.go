@@ -122,10 +122,10 @@ func TestSetupAction_WithContext(t *testing.T) {
 // TestRepeatString verifies string repetition utility.
 func TestRepeatString(t *testing.T) {
 	tests := []struct {
-		input  string
-		count  int
-		want   string
-		name   string
+		input string
+		count int
+		want  string
+		name  string
 	}{
 		{
 			name:  "single character single repeat",
@@ -190,7 +190,9 @@ func TestGetServerPath_FallbackPaths(t *testing.T) {
 	// Create the binary file
 	f, err := os.Create(binPath)
 	require.NoError(t, err)
-	f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	// Add to PATH or verify fallback logic
 	path, err := getServerPath()
@@ -208,9 +210,9 @@ func TestDisplaySetupCompletion_NilResult(t *testing.T) {
 // TestDisplaySetupCompletion_SuccessfulSetup tests completion with successful setup.
 func TestDisplaySetupCompletion_SuccessfulSetup(t *testing.T) {
 	result := &setup.SetupResult{
-		ConfigWritten:   true,
-		DatabasesAdded:  2,
-		ConfigPath:      "/home/user/.config/db-mcp/.databases.json",
+		ConfigWritten:  true,
+		DatabasesAdded: 2,
+		ConfigPath:     "/home/user/.config/db-mcp/.databases.json",
 		AgentsRegistered: map[string]bool{
 			"Claude Desktop": true,
 			"Claude Code":    true,
@@ -228,9 +230,9 @@ func TestDisplaySetupCompletion_SuccessfulSetup(t *testing.T) {
 // TestDisplaySetupCompletion_WithErrors tests completion with errors.
 func TestDisplaySetupCompletion_WithErrors(t *testing.T) {
 	result := &setup.SetupResult{
-		ConfigWritten:   false,
-		DatabasesAdded:  1,
-		ConfigPath:      "/home/user/.config/db-mcp/.databases.json",
+		ConfigWritten:  false,
+		DatabasesAdded: 1,
+		ConfigPath:     "/home/user/.config/db-mcp/.databases.json",
 		AgentsRegistered: map[string]bool{
 			"Claude Desktop": false,
 		},

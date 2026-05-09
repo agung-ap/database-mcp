@@ -8,10 +8,10 @@ import (
 
 // Wizard orchestrates the interactive database setup flow.
 type Wizard struct {
-	options       *SetupOptions
-	tester        *ConnectionTester
-	configWriter  *ConfigWriter
-	result        *SetupResult
+	options      *SetupOptions
+	tester       *ConnectionTester
+	configWriter *ConfigWriter
+	result       *SetupResult
 }
 
 // NewWizard creates a new setup wizard.
@@ -23,8 +23,8 @@ func NewWizard(options *SetupOptions) *Wizard {
 	}
 
 	return &Wizard{
-		options: options,
-		tester:  NewConnectionTester(5 * time.Second),
+		options:      options,
+		tester:       NewConnectionTester(5 * time.Second),
 		configWriter: NewConfigWriter(options.ConfigPath),
 		result: &SetupResult{
 			ConfigPath:       options.ConfigPath,
@@ -56,7 +56,8 @@ func (w *Wizard) Run() (*SetupResult, error) {
 	// Test connections if not skipped
 	if !w.options.SkipConnectionTest {
 		fmt.Println("\n🔍 Testing connections...")
-		for i, db := range databases {
+		for i := 0; i < len(databases); i++ {
+			db := databases[i]
 			fmt.Printf("  Testing %s (%s)... ", db.Name, db.Driver)
 			success, msg, err := w.tester.TestConnection(&db)
 			if err != nil {

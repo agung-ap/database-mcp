@@ -46,7 +46,9 @@ func (ct *ConnectionTester) TestConnection(cfg *DatabaseConfig) (bool, string, e
 	if err != nil {
 		return false, fmt.Sprintf("failed to open connection: %v", err), nil
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	if err := db.PingContext(ctx); err != nil {
 		return false, fmt.Sprintf("connection failed: %v", err), nil

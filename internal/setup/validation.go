@@ -39,7 +39,11 @@ func validateName(name string) error {
 	}
 
 	for _, ch := range name {
-		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_') {
+		isLower := ch >= 'a' && ch <= 'z'
+		isUpper := ch >= 'A' && ch <= 'Z'
+		isDigit := ch >= '0' && ch <= '9'
+		isUnderscore := ch == '_'
+		if !isLower && !isUpper && !isDigit && !isUnderscore {
 			return fmt.Errorf("database name must contain only alphanumeric characters and underscore")
 		}
 	}

@@ -15,7 +15,6 @@ import (
 // MockDriver implements the db.Driver interface for testing.
 type MockDriver struct {
 	driverName string
-	healthy    bool
 	latency    time.Duration
 	pingErr    error
 }

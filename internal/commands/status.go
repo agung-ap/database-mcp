@@ -53,9 +53,9 @@ The status command will:
 				Value:   true,
 			},
 			&cli.StringSliceFlag{
-				Name:    "only",
-				Usage:   "Check only specific connections (comma-separated)",
-				Value:   cli.NewStringSlice(),
+				Name:  "only",
+				Usage: "Check only specific connections (comma-separated)",
+				Value: cli.NewStringSlice(),
 			},
 		},
 		Action: statusAction,

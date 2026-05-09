@@ -110,15 +110,15 @@ func (cw *ConfigWriter) atomicWrite(cfg *config.Config) error {
 
 	tmpPath := tmpFile.Name()
 	if err := os.WriteFile(tmpPath, content, 0o600); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Atomic rename
 	if err := os.Rename(tmpPath, cw.configPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 

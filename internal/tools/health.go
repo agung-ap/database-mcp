@@ -45,13 +45,13 @@ type HealthCheckRequest struct {
 
 // HealthCheckResponse contains the overall health check result.
 type HealthCheckResponse struct {
-	Timestamp      time.Time              `json:"timestamp"`
-	TotalChecks    int                    `json:"total_checks"`
-	HealthyCount   int                    `json:"healthy_count"`
-	UnhealthyCount int                    `json:"unhealthy_count"`
-	UnknownCount   int                    `json:"unknown_count"`
-	Results        []HealthCheckResult    `json:"results"`
-	Errors         map[string]string      `json:"errors,omitempty"`
+	Timestamp      time.Time           `json:"timestamp"`
+	TotalChecks    int                 `json:"total_checks"`
+	HealthyCount   int                 `json:"healthy_count"`
+	UnhealthyCount int                 `json:"unhealthy_count"`
+	UnknownCount   int                 `json:"unknown_count"`
+	Results        []HealthCheckResult `json:"results"`
+	Errors         map[string]string   `json:"errors,omitempty"`
 }
 
 // HealthChecker performs health checks on database connections.

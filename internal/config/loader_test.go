@@ -44,8 +44,10 @@ func TestExpandHome(t *testing.T) {
 }
 
 func TestExpandEnvVars(t *testing.T) {
-	os.Setenv("TEST_PASSWORD", "secret123")
-	defer os.Unsetenv("TEST_PASSWORD")
+	_ = os.Setenv("TEST_PASSWORD", "secret123")
+	defer func() {
+		_ = os.Unsetenv("TEST_PASSWORD")
+	}()
 
 	tests := []struct {
 		name     string
@@ -75,8 +77,10 @@ func TestExpandEnvVars(t *testing.T) {
 func TestFileExists(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "test_config*.json")
 	require.NoError(t, err)
-	tmpFile.Close()
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+	}()
 
 	tests := []struct {
 		name     string
@@ -123,7 +127,7 @@ func TestLoadFromPathJSON(t *testing.T) {
 
 	tmpFile, err := os.CreateTemp("", "test_config*.json")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	err = os.WriteFile(tmpFile.Name(), []byte(jsonContent), 0o644)
 	require.NoError(t, err)
@@ -161,7 +165,7 @@ func TestLoadFromPathMySQLJSON(t *testing.T) {
 
 	tmpFile, err := os.CreateTemp("", "test_config*.json")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	err = os.WriteFile(tmpFile.Name(), []byte(jsonContent), 0o644)
 	require.NoError(t, err)
@@ -177,10 +181,12 @@ func TestLoadFromPathMySQLJSON(t *testing.T) {
 }
 
 func TestLoadFromPathEnvVarSubstitution(t *testing.T) {
-	os.Setenv("DB_PASSWORD", "secret_password")
-	os.Setenv("DB_USERNAME", "admin")
-	defer os.Unsetenv("DB_PASSWORD")
-	defer os.Unsetenv("DB_USERNAME")
+	_ = os.Setenv("DB_PASSWORD", "secret_password")
+	_ = os.Setenv("DB_USERNAME", "admin")
+	defer func() {
+		_ = os.Unsetenv("DB_PASSWORD")
+		_ = os.Unsetenv("DB_USERNAME")
+	}()
 
 	jsonContent := `{
   "version": "1.0",
@@ -199,7 +205,7 @@ func TestLoadFromPathEnvVarSubstitution(t *testing.T) {
 
 	tmpFile, err := os.CreateTemp("", "test_config*.json")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	err = os.WriteFile(tmpFile.Name(), []byte(jsonContent), 0o644)
 	require.NoError(t, err)
@@ -237,7 +243,7 @@ func TestBackwardCompatibilityLoad(t *testing.T) {
 
 	tmpFile, err := os.CreateTemp("", "test_config*.json")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	err = os.WriteFile(tmpFile.Name(), []byte(jsonContent), 0o644)
 	require.NoError(t, err)

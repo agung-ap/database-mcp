@@ -124,4 +124,3 @@ func (h *Handler) RegisterAll(srv *Server) {
 	rollbackTx := &tools.RollbackTransactionHandler{TxStore: h.TxStore, Audit: h.Audit}
 	AddToolWithInput(srv, rollbackTxTool, rollbackTx.Handle)
 }
-

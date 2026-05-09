@@ -57,7 +57,11 @@ func (h *ListDatabasesHandler) Handle(ctx context.Context, req *mcp.CallToolRequ
 	if err != nil {
 		return newToolError(err), nil, err
 	}
-	defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
+	defer func() {
+		if e := rows.Close(); e != nil {
+			slog.Debug("failed to close rows", "error", e)
+		}
+	}()
 
 	var databases []string
 	for rows.Next() {
@@ -114,7 +118,11 @@ func (h *ListTablesHandler) Handle(ctx context.Context, req *mcp.CallToolRequest
 		if err != nil {
 			return newToolError(err), nil, err
 		}
-		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
+		defer func() {
+			if e := rows.Close(); e != nil {
+				slog.Debug("failed to close rows", "error", e)
+			}
+		}()
 		for rows.Next() {
 			var t tableInfo
 			if err := rows.Scan(&t.Schema, &t.TableName, &t.TableType); err != nil {
@@ -130,7 +138,11 @@ func (h *ListTablesHandler) Handle(ctx context.Context, req *mcp.CallToolRequest
 		if err != nil {
 			return newToolError(err), nil, err
 		}
-		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
+		defer func() {
+			if e := rows.Close(); e != nil {
+				slog.Debug("failed to close rows", "error", e)
+			}
+		}()
 		for rows.Next() {
 			var name string
 			if err := rows.Scan(&name); err != nil {
@@ -197,7 +209,11 @@ func (h *DescribeTableHandler) Handle(ctx context.Context, req *mcp.CallToolRequ
 		if err != nil {
 			return newToolError(err), nil, err
 		}
-		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
+		defer func() {
+			if e := rows.Close(); e != nil {
+				slog.Debug("failed to close rows", "error", e)
+			}
+		}()
 		for rows.Next() {
 			var col columnInfo
 			var nullable string
@@ -216,7 +232,11 @@ func (h *DescribeTableHandler) Handle(ctx context.Context, req *mcp.CallToolRequ
 		if err != nil {
 			return newToolError(err), nil, err
 		}
-		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
+		defer func() {
+			if e := rows.Close(); e != nil {
+				slog.Debug("failed to close rows", "error", e)
+			}
+		}()
 		for rows.Next() {
 			var col columnInfo
 			var nullable string
@@ -262,10 +282,10 @@ type ListIndexesHandler struct {
 }
 
 type indexInfo struct {
-	IndexName string `json:"index_name"`
+	IndexName  string `json:"index_name"`
 	ColumnName string `json:"column_name"`
-	IsUnique bool `json:"is_unique"`
-	IsPrimary bool `json:"is_primary"`
+	IsUnique   bool   `json:"is_unique"`
+	IsPrimary  bool   `json:"is_primary"`
 }
 
 func (h *ListIndexesHandler) Handle(ctx context.Context, req *mcp.CallToolRequest, input ListIndexesInput) (*mcp.CallToolResult, any, error) {
@@ -301,7 +321,11 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, req *mcp.CallToolReques
 		if queryErr != nil {
 			return newToolError(queryErr), nil, queryErr
 		}
-		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
+		defer func() {
+			if e := rows.Close(); e != nil {
+				slog.Debug("failed to close rows", "error", e)
+			}
+		}()
 		for rows.Next() {
 			var indexName, indexDef string
 			if err := rows.Scan(&indexName, &indexDef); err != nil {
@@ -318,7 +342,11 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, req *mcp.CallToolReques
 		if err != nil {
 			return newToolError(err), nil, err
 		}
-		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
+		defer func() {
+			if e := rows.Close(); e != nil {
+				slog.Debug("failed to close rows", "error", e)
+			}
+		}()
 		for rows.Next() {
 			var tableName, nonUnique int
 			var keyName string
@@ -334,7 +362,7 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, req *mcp.CallToolReques
 			var indexComment string
 			var visible string
 			var expression sql.NullString
-			
+
 			if err := rows.Scan(&tableName, &nonUnique, &keyName, &seqInIndex, &columnName, &collation, &cardinality, &subPart, &packed, &null, &indexType, &comment, &indexComment, &visible, &expression); err != nil {
 				return newToolError(err), nil, err
 			}
@@ -368,9 +396,9 @@ type ListForeignKeysHandler struct {
 }
 
 type fkInfo struct {
-	ConstraintName string `json:"constraint_name"`
-	ColumnName     string `json:"column_name"`
-	ReferencedTable string `json:"referenced_table"`
+	ConstraintName   string `json:"constraint_name"`
+	ColumnName       string `json:"column_name"`
+	ReferencedTable  string `json:"referenced_table"`
 	ReferencedColumn string `json:"referenced_column"`
 }
 
@@ -386,10 +414,8 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, req *mcp.CallToolRe
 	}
 
 	var fks []fkInfo
-	schema := input.Schema
-	if schema == "" && conn.DriverName() == "postgres" {
-		schema = "public"
-	}
+	// For PostgreSQL, default schema is 'public' if not specified
+	// (This is implicitly used when table names are unqualified)
 
 	switch conn.DriverName() {
 	case "postgres":
@@ -398,7 +424,11 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, req *mcp.CallToolRe
 		if err != nil {
 			return newToolError(err), nil, err
 		}
-		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
+		defer func() {
+			if e := rows.Close(); e != nil {
+				slog.Debug("failed to close rows", "error", e)
+			}
+		}()
 		for rows.Next() {
 			var fk fkInfo
 			if err := rows.Scan(&fk.ConstraintName, &fk.ColumnName, &fk.ReferencedTable, &fk.ReferencedColumn); err != nil {
@@ -415,7 +445,11 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, req *mcp.CallToolRe
 		if err != nil {
 			return newToolError(err), nil, err
 		}
-		defer func() { if e := rows.Close(); e != nil { slog.Debug("failed to close rows", "error", e) } }()
+		defer func() {
+			if e := rows.Close(); e != nil {
+				slog.Debug("failed to close rows", "error", e)
+			}
+		}()
 		for rows.Next() {
 			var fk fkInfo
 			if err := rows.Scan(&fk.ConstraintName, &fk.ColumnName, &fk.ReferencedTable, &fk.ReferencedColumn); err != nil {

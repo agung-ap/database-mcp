@@ -65,8 +65,8 @@ func TestAgentRegistry_RegisterClaudeCode(t *testing.T) {
 
 	// Change to temp directory
 	originalWd, _ := os.Getwd()
-	defer os.Chdir(originalWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalWd) }()
+	_ = os.Chdir(tmpDir)
 
 	serverPath := "/usr/local/bin/db-mcp"
 	registry := NewAgentRegistry(serverPath, "/home/user/.config/db-mcp/.databases.json")
@@ -95,8 +95,8 @@ func TestAgentRegistry_RegisterCursor(t *testing.T) {
 
 	// Change to temp directory
 	originalWd, _ := os.Getwd()
-	defer os.Chdir(originalWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalWd) }()
+	_ = os.Chdir(tmpDir)
 
 	serverPath := "/usr/local/bin/db-mcp"
 	registry := NewAgentRegistry(serverPath, "/home/user/.config/db-mcp/.databases.json")
@@ -170,8 +170,8 @@ func TestAgentRegistry_RegisterClaudeCode_UpdateExisting(t *testing.T) {
 
 	// Change to temp directory
 	originalWd, _ := os.Getwd()
-	defer os.Chdir(originalWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalWd) }()
+	_ = os.Chdir(tmpDir)
 
 	// Create initial config
 	initialConfig := MCPClientConfig{
@@ -316,8 +316,8 @@ func TestAgentRegistry_FilePermissions(t *testing.T) {
 
 	// Change to temp directory
 	originalWd, _ := os.Getwd()
-	defer os.Chdir(originalWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalWd) }()
+	_ = os.Chdir(tmpDir)
 
 	registry := NewAgentRegistry("/bin/db-mcp", "/config.json")
 
@@ -337,8 +337,8 @@ func TestAgentRegistry_CreateNestedDirectories(t *testing.T) {
 
 	// Change to temp directory
 	originalWd, _ := os.Getwd()
-	defer os.Chdir(originalWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalWd) }()
+	_ = os.Chdir(tmpDir)
 
 	registry := NewAgentRegistry("/bin/db-mcp", "/config.json")
 
@@ -357,8 +357,8 @@ func TestAgentRegistry_RegisterAll_MultipleAgents(t *testing.T) {
 
 	// Change to temp directory
 	originalWd, _ := os.Getwd()
-	defer os.Chdir(originalWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalWd) }()
+	_ = os.Chdir(tmpDir)
 
 	// Create .claude directory manually
 	err := os.MkdirAll(".claude", 0o700)
@@ -389,8 +389,8 @@ func TestAgentRegistry_EnvVariableInConfig(t *testing.T) {
 
 	// Change to temp directory
 	originalWd, _ := os.Getwd()
-	defer os.Chdir(originalWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalWd) }()
+	_ = os.Chdir(tmpDir)
 
 	dbConfigPath := "/home/user/.config/db-mcp/.databases.json"
 	serverPath := "/usr/local/bin/db-mcp"
