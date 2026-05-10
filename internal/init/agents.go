@@ -9,10 +9,10 @@ import (
 	"github.com/agung-ap/database-mcp/internal/config"
 )
 
-// WriteClaudeCodeConfig registers db-mcp with the Claude Code CLI via `claude mcp add`.
+// WriteClaudeCodeConfig registers database-mcp with the Claude Code CLI via `claude mcp add`.
 // Uses --scope user so the server is available in all projects, not just the current one.
 func WriteClaudeCodeConfig(binaryPath string) error {
-	cmd := exec.Command("claude", "mcp", "add", "db-mcp", binaryPath,
+	cmd := exec.Command("claude", "mcp", "add", "database-mcp", binaryPath,
 		"--scope", "user",
 		"--env", "MCP_DB_CONFIG_PATH="+config.DefaultConfigPath(),
 	)
@@ -23,7 +23,7 @@ func WriteClaudeCodeConfig(binaryPath string) error {
 	return nil
 }
 
-// WriteClaudeDesktopConfig configures Claude Desktop with db-mcp.
+// WriteClaudeDesktopConfig configures Claude Desktop with database-mcp.
 // Config file: ~/.claude/claude_desktop_config.json
 func WriteClaudeDesktopConfig(binaryPath string) error {
 	home, err := os.UserHomeDir()
@@ -39,10 +39,10 @@ func WriteClaudeDesktopConfig(binaryPath string) error {
 			"MCP_DB_CONFIG_PATH": config.DefaultConfigPath(),
 		},
 	}
-	return mergeJSON(cfgPath, "mcpServers.db-mcp", serverEntry)
+	return mergeJSON(cfgPath, "mcpServers.database-mcp", serverEntry)
 }
 
-// WriteOpenCodeConfig configures OpenCode with db-mcp.
+// WriteOpenCodeConfig configures OpenCode with database-mcp.
 // Config file: ~/.config/opencode/opencode.json (XDG convention)
 func WriteOpenCodeConfig(binaryPath string) error {
 	home, err := os.UserHomeDir()
@@ -61,10 +61,10 @@ func WriteOpenCodeConfig(binaryPath string) error {
 		"command": []string{binaryPath},
 		"enabled": true,
 	}
-	return mergeJSON(cfgPath, "mcp.db-mcp", serverEntry)
+	return mergeJSON(cfgPath, "mcp.database-mcp", serverEntry)
 }
 
-// WriteVSCodeConfig configures GitHub Copilot in VS Code with db-mcp.
+// WriteVSCodeConfig configures GitHub Copilot in VS Code with database-mcp.
 // Config file: .vscode/mcp.json in the current working directory.
 func WriteVSCodeConfig(binaryPath string) error {
 	cfgPath := filepath.Join(".vscode", "mcp.json")
@@ -74,5 +74,5 @@ func WriteVSCodeConfig(binaryPath string) error {
 		"args":    []string{},
 		"type":    "stdio",
 	}
-	return mergeJSON(cfgPath, "servers.db-mcp", serverEntry)
+	return mergeJSON(cfgPath, "servers.database-mcp", serverEntry)
 }

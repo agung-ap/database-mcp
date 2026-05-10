@@ -1,4 +1,4 @@
-// Package init provides the interactive onboarding wizard for db-mcp.
+// Package init provides the interactive onboarding wizard for database-mcp.
 package init
 
 import (
@@ -15,7 +15,7 @@ import (
 
 // RunWizard runs the interactive setup wizard and returns an exit code.
 func RunWizard() int {
-	fmt.Println("Welcome to db-mcp setup!")
+	fmt.Println("Welcome to database-mcp setup!")
 	fmt.Println()
 
 	cfgDir := config.ConfigDir()
@@ -64,7 +64,7 @@ func RunWizard() int {
 	// Detect binary path
 	binaryPath, err := os.Executable()
 	if err != nil {
-		binaryPath = "db-mcp"
+		binaryPath = "database-mcp"
 	}
 
 	// Configure agents
@@ -74,7 +74,7 @@ func RunWizard() int {
 	fmt.Println()
 	fmt.Println("Setup complete! Restart your agent to load the new MCP server.")
 	fmt.Printf("\nTo add more connections later, edit: %s\n", cfgPath)
-	fmt.Println("To test a connection, run: db-mcp test <connection-id>")
+	fmt.Println("To test a connection, run: database-mcp test <connection-id>")
 	return 0
 }
 

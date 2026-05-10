@@ -36,21 +36,21 @@ type Config struct {
 	Connections []Connection `json:"connections"`
 }
 
-// ConfigDir returns the platform-appropriate config directory for db-mcp.
+// ConfigDir returns the platform-appropriate config directory for database-mcp.
 //
-//	Windows: %APPDATA%\db-mcp
-//	Linux / WSL / macOS: $XDG_CONFIG_HOME/db-mcp or ~/.config/db-mcp
+//	Windows: %APPDATA%\database-mcp
+//	Linux / WSL / macOS: $XDG_CONFIG_HOME/database-mcp or ~/.config/database-mcp
 func ConfigDir() string {
 	if runtime.GOOS == "windows" {
 		if appdata := os.Getenv("APPDATA"); appdata != "" {
-			return filepath.Join(appdata, "db-mcp")
+			return filepath.Join(appdata, "database-mcp")
 		}
 	}
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "db-mcp")
+		return filepath.Join(xdg, "database-mcp")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "db-mcp")
+	return filepath.Join(home, ".config", "database-mcp")
 }
 
 // DefaultConfigPath returns the default path for connections.json.

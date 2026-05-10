@@ -48,7 +48,7 @@ func runServer() {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		slog.Error("failed to load config", "path", cfgPath, "error", err)
-		slog.Error("run 'db-mcp init' to set up your configuration")
+		slog.Error("run 'database-mcp init' to set up your configuration")
 		os.Exit(1)
 	}
 
@@ -81,7 +81,7 @@ func runServer() {
 	txStore := tools.NewTxStore(time.Duration(ttlSeconds) * time.Second)
 
 	// Build and register MCP server
-	srv := internalmcp.NewServer("db-mcp", "2.0.0")
+	srv := internalmcp.NewServer("database-mcp", "2.0.0")
 	h := &internalmcp.Handler{
 		Manager: manager,
 		Audit:   auditLogger,
@@ -101,7 +101,7 @@ func runServer() {
 		cancel()
 	}()
 
-	slog.Info("db-mcp server starting", "config", cfgPath, "connections", len(cfg.Connections))
+	slog.Info("database-mcp server starting", "config", cfgPath, "connections", len(cfg.Connections))
 	if err := srv.ServeStdio(ctx); err != nil {
 		slog.Error("server error", "error", err)
 		os.Exit(1)
