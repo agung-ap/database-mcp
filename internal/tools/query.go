@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agp/db-mcp/internal/audit"
+	"github.com/agung-ap/database-mcp/internal/audit"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -68,7 +68,7 @@ func (h *ExecuteQueryHandler) Handle(ctx context.Context, in ExecuteQueryInput) 
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "execute_query", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result, err := scanAllRows(rows, limit)
 	if err != nil {
@@ -180,7 +180,7 @@ func (h *ExplainQueryHandler) Handle(ctx context.Context, in ExplainQueryInput) 
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "explain_query", in.ConnectionID, conn.DriverName(), "503", "explain failed", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var plan string
 	if rows.Next() {

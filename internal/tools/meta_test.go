@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/agp/db-mcp/internal/audit"
-	"github.com/agp/db-mcp/internal/db"
+	"github.com/agung-ap/database-mcp/internal/audit"
+	"github.com/agung-ap/database-mcp/internal/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,10 +16,10 @@ func newTestAuditLogger(t *testing.T) *audit.Logger {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "audit-*.log")
 	require.NoError(t, err)
-	t.Cleanup(func() { f.Close() })
+	t.Cleanup(func() { _ = f.Close() })
 	logger, err := audit.New(f.Name())
 	require.NoError(t, err)
-	t.Cleanup(func() { logger.Close() })
+	t.Cleanup(func() { _ = logger.Close() })
 	return logger
 }
 
@@ -38,14 +38,6 @@ func newMockManager(drivers map[string]db.Driver) *mockManager {
 	return &mockManager{drivers: drivers}
 }
 
-func resultText(t *testing.T, res interface{ GetContent() interface{} }) string {
-	t.Helper()
-	// Extract text from the first TextContent in a CallToolResult
-	type hasContent interface {
-		GetIsError() bool
-	}
-	return ""
-}
 
 func TestListConnections(t *testing.T) {
 	logger := newTestAuditLogger(t)

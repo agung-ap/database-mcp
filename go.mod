@@ -1,4 +1,4 @@
-module github.com/agp/db-mcp
+module github.com/agung-ap/database-mcp
 
 go 1.25.5
 

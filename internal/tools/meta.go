@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agp/db-mcp/internal/audit"
-	"github.com/agp/db-mcp/internal/db"
+	"github.com/agung-ap/database-mcp/internal/audit"
+	"github.com/agung-ap/database-mcp/internal/db"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

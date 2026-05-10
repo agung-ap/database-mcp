@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/agp/db-mcp/internal/audit"
+	"github.com/agung-ap/database-mcp/internal/audit"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -70,7 +70,7 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, in GetTableStatsInput
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "get_table_stats", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		if rows.Next() {
 			var lastAnalyze sql.NullTime
 			if err := rows.Scan(&stats.LiveTuples, &stats.DeadTuples, &stats.SizeBytes, &lastAnalyze); err != nil {
@@ -93,7 +93,7 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, in GetTableStatsInput
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "get_table_stats", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		if rows.Next() {
 			var rowCount, sizeBytes sql.NullInt64
 			var createTime sql.NullTime

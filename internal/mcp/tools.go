@@ -3,9 +3,9 @@ package mcp
 import (
 	"context"
 
-	"github.com/agp/db-mcp/internal/audit"
-	"github.com/agp/db-mcp/internal/db"
-	"github.com/agp/db-mcp/internal/tools"
+	"github.com/agung-ap/database-mcp/internal/audit"
+	"github.com/agung-ap/database-mcp/internal/db"
+	"github.com/agung-ap/database-mcp/internal/tools"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

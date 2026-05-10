@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/agp/db-mcp/internal/config"
+	"github.com/agung-ap/database-mcp/internal/config"
 )
 
 // RunWizard runs the interactive setup wizard and returns an exit code.
@@ -38,10 +38,7 @@ func RunWizard() int {
 	reader := bufio.NewReader(os.Stdin)
 
 	// Add connections
-	for {
-		if !promptBool(reader, "Add a database connection?", len(cfg.Connections) == 0) {
-			break
-		}
+	for promptBool(reader, "Add a database connection?", len(cfg.Connections) == 0) {
 		conn := promptConnection(reader)
 		cfg.Connections = append(cfg.Connections, conn)
 		fmt.Printf("Connection %q added.\n\n", conn.ID)
@@ -102,7 +99,7 @@ func promptConnection(reader *bufio.Reader) config.Connection {
 	if conn.Driver == "postgres" {
 		sslDefault = "require"
 	}
-	conn.SSLMode = promptStringDefault(reader, fmt.Sprintf("SSL mode [require/prefer/disable]"), sslDefault)
+	conn.SSLMode = promptStringDefault(reader, "SSL mode [require/prefer/disable]", sslDefault)
 	return conn
 }
 

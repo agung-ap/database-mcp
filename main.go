@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/agp/db-mcp/internal/audit"
-	"github.com/agp/db-mcp/internal/config"
-	"github.com/agp/db-mcp/internal/db"
-	dbinit "github.com/agp/db-mcp/internal/init"
-	internalmcp "github.com/agp/db-mcp/internal/mcp"
-	"github.com/agp/db-mcp/internal/tools"
+	"github.com/agung-ap/database-mcp/internal/audit"
+	"github.com/agung-ap/database-mcp/internal/config"
+	"github.com/agung-ap/database-mcp/internal/db"
+	dbinit "github.com/agung-ap/database-mcp/internal/init"
+	internalmcp "github.com/agung-ap/database-mcp/internal/mcp"
+	"github.com/agung-ap/database-mcp/internal/tools"
 )
 
 func main() {
@@ -69,7 +69,7 @@ func runServer() {
 		slog.Error("failed to open audit log", "path", auditPath, "error", err)
 		os.Exit(1)
 	}
-	defer auditLogger.Close()
+	defer func() { _ = auditLogger.Close() }()
 
 	// Transaction TTL
 	ttlSeconds := 30

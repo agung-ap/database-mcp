@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/agp/db-mcp/internal/db"
+	"github.com/agung-ap/database-mcp/internal/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

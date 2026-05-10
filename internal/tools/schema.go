@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/agp/db-mcp/internal/audit"
+	"github.com/agung-ap/database-mcp/internal/audit"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -50,7 +50,7 @@ func (h *ListDatabasesHandler) Handle(ctx context.Context, in ListDatabasesInput
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "list_databases", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var databases []string
 	for rows.Next() {
@@ -109,7 +109,7 @@ func (h *ListTablesHandler) Handle(ctx context.Context, in ListTablesInput) (*mc
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_tables", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var t tableInfo
 			if err := rows.Scan(&t.Schema, &t.TableName, &t.TableType); err != nil {
@@ -125,7 +125,7 @@ func (h *ListTablesHandler) Handle(ctx context.Context, in ListTablesInput) (*mc
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_tables", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var name string
 			if err := rows.Scan(&name); err != nil {
@@ -200,7 +200,7 @@ func (h *DescribeTableHandler) Handle(ctx context.Context, in DescribeTableInput
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "describe_table", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var c columnInfo
 			var maxLen sql.NullInt64
@@ -225,7 +225,7 @@ func (h *DescribeTableHandler) Handle(ctx context.Context, in DescribeTableInput
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "describe_table", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var c columnInfo
 			var maxLen sql.NullInt64
@@ -302,7 +302,7 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, in ListIndexesInput) (*
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_indexes", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var idx indexInfo
 			if err := rows.Scan(&idx.SchemaName, &idx.TableName, &idx.IndexName, &idx.IndexDef); err != nil {
@@ -319,7 +319,7 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, in ListIndexesInput) (*
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_indexes", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var idx indexInfo
 			var nonUnique int
@@ -405,7 +405,7 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, in ListForeignKeysI
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_foreign_keys", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var fk foreignKeyInfo
 			if err := rows.Scan(&fk.ConstraintName, &fk.TableSchema, &fk.TableName, &fk.ColumnName,
@@ -433,7 +433,7 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, in ListForeignKeysI
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_foreign_keys", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var fk foreignKeyInfo
 			if err := rows.Scan(&fk.ConstraintName, &fk.TableSchema, &fk.TableName, &fk.ColumnName,

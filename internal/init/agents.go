@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/agp/db-mcp/internal/config"
+	"github.com/agung-ap/database-mcp/internal/config"
 )
 
 // WriteClaudeCodeConfig registers db-mcp with the Claude Code CLI via `claude mcp add`.

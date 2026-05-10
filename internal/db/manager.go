@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/agp/db-mcp/internal/config"
-	"github.com/agp/db-mcp/internal/db/mysql"
-	"github.com/agp/db-mcp/internal/db/postgres"
+	"github.com/agung-ap/database-mcp/internal/config"
+	"github.com/agung-ap/database-mcp/internal/db/mysql"
+	"github.com/agung-ap/database-mcp/internal/db/postgres"
 )
 
 // Manager manages a set of named database connections.

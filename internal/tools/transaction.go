@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agp/db-mcp/internal/audit"
+	"github.com/agung-ap/database-mcp/internal/audit"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
