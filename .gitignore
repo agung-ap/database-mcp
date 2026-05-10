@@ -1,0 +1,7 @@
+# ignore directory
+bin/
+.claude/
+docker/
+
+# ignore file
+CLAUDE.md
