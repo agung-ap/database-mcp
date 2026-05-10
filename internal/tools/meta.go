@@ -30,8 +30,6 @@ func (h *ListConnectionsHandler) Handle(ctx context.Context, _ ListConnectionsIn
 	queryID := newUUID()
 	now := time.Now()
 
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_connections", Success: true})
-
 	data, err := json.Marshal(h.Connections)
 	if err != nil {
 		return errResult("500", "failed to marshal connections", err.Error()), nil
@@ -61,8 +59,6 @@ func (h *TestConnectionHandler) Handle(ctx context.Context, in TestConnectionInp
 	if in.ConnectionID == "" {
 		return errResult("400", "missing connection_id", "connection_id is required"), nil
 	}
-
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "test_connection", ConnectionID: in.ConnectionID})
 
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {

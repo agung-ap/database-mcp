@@ -118,8 +118,6 @@ func (h *BeginTransactionHandler) Handle(ctx context.Context, in BeginTransactio
 		return errResult("400", "missing connection_id", "connection_id is required"), nil
 	}
 
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "begin_transaction", ConnectionID: in.ConnectionID})
-
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "begin_transaction", in.ConnectionID, "", "503", "connection not found", err)
@@ -154,8 +152,6 @@ func (h *CommitTransactionHandler) Handle(ctx context.Context, in CommitTransact
 		return errResult("400", "missing tx_id", "tx_id is required"), nil
 	}
 
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "commit_transaction"})
-
 	entry, ok := h.TxStore.Get(in.TxID)
 	if !ok {
 		return errResult("400", "tx_id not found", fmt.Sprintf("no active transaction with id %q", in.TxID)), nil
@@ -188,8 +184,6 @@ func (h *RollbackTransactionHandler) Handle(ctx context.Context, in RollbackTran
 	if in.TxID == "" {
 		return errResult("400", "missing tx_id", "tx_id is required"), nil
 	}
-
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "rollback_transaction"})
 
 	entry, ok := h.TxStore.Get(in.TxID)
 	if !ok {

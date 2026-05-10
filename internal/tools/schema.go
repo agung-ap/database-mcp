@@ -29,8 +29,6 @@ func (h *ListDatabasesHandler) Handle(ctx context.Context, in ListDatabasesInput
 		return errResult("400", "missing connection_id", "connection_id is required"), nil
 	}
 
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_databases", ConnectionID: in.ConnectionID})
-
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "list_databases", in.ConnectionID, "", "503", "connection not found", err)
@@ -93,8 +91,6 @@ func (h *ListTablesHandler) Handle(ctx context.Context, in ListTablesInput) (*mc
 	if in.ConnectionID == "" {
 		return errResult("400", "missing connection_id", "connection_id is required"), nil
 	}
-
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_tables", ConnectionID: in.ConnectionID})
 
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {
@@ -177,8 +173,6 @@ func (h *DescribeTableHandler) Handle(ctx context.Context, in DescribeTableInput
 	if in.Table == "" {
 		return errResult("400", "missing table", "table is required"), nil
 	}
-
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "describe_table", ConnectionID: in.ConnectionID})
 
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {
@@ -283,8 +277,6 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, in ListIndexesInput) (*
 		return errResult("400", "missing table", "table is required"), nil
 	}
 
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_indexes", ConnectionID: in.ConnectionID})
-
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "list_indexes", in.ConnectionID, "", "503", "connection not found", err)
@@ -376,8 +368,6 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, in ListForeignKeysI
 	if in.Table == "" {
 		return errResult("400", "missing table", "table is required"), nil
 	}
-
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "list_foreign_keys", ConnectionID: in.ConnectionID})
 
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {

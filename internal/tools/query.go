@@ -37,11 +37,6 @@ func (h *ExecuteQueryHandler) Handle(ctx context.Context, in ExecuteQueryInput) 
 		return errResult("400", "missing query", "query is required"), nil
 	}
 
-	h.Audit.Log(audit.AuditEntry{
-		QueryID: queryID, Timestamp: now, Tool: "execute_query",
-		ConnectionID: in.ConnectionID, Query: in.Query, ParamCount: len(in.Params),
-	})
-
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "execute_query", in.ConnectionID, "", "503", "connection not found", err)
@@ -112,11 +107,6 @@ func (h *ExecuteMutationHandler) Handle(ctx context.Context, in ExecuteMutationI
 		return errResult("400", "missing query", "query is required"), nil
 	}
 
-	h.Audit.Log(audit.AuditEntry{
-		QueryID: queryID, Timestamp: now, Tool: "execute_mutation",
-		ConnectionID: in.ConnectionID, Query: in.Query, ParamCount: len(in.Params),
-	})
-
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "execute_mutation", in.ConnectionID, "", "503", "connection not found", err)
@@ -155,11 +145,6 @@ func (h *ExplainQueryHandler) Handle(ctx context.Context, in ExplainQueryInput) 
 	if in.Query == "" {
 		return errResult("400", "missing query", "query is required"), nil
 	}
-
-	h.Audit.Log(audit.AuditEntry{
-		QueryID: queryID, Timestamp: now, Tool: "explain_query",
-		ConnectionID: in.ConnectionID, Query: in.Query, ParamCount: len(in.Params),
-	})
 
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {

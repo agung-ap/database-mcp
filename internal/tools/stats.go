@@ -45,8 +45,6 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, in GetTableStatsInput
 		return errResult("400", "missing table", "table is required"), nil
 	}
 
-	h.Audit.Log(audit.AuditEntry{QueryID: queryID, Timestamp: now, Tool: "get_table_stats", ConnectionID: in.ConnectionID})
-
 	conn, err := h.Manager.Get(in.ConnectionID)
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "get_table_stats", in.ConnectionID, "", "503", "connection not found", err)
