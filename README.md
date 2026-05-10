@@ -5,7 +5,7 @@ A Model Context Protocol (MCP) server that gives AI agents safe, structured acce
 ## Quick Install
 
 ```bash
-go install github.com/agp/db-mcp@latest
+go install github.com/agung-ap/database-mcp@latest
 ```
 
 Or build from source and install to your local bin:
