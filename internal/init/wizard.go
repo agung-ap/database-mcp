@@ -81,7 +81,7 @@ func RunWizard() int {
 func promptConnection(reader *bufio.Reader) config.Connection {
 	var conn config.Connection
 	conn.ID = promptString(reader, "Connection ID (e.g. prod-pg)", "")
-	conn.Driver = promptChoice(reader, "Driver", []string{"postgres", "mysql"})
+	conn.Driver = promptChoice(reader, "Driver", []string{"postgres", "mysql", "sqlserver"})
 	conn.Host = promptStringDefault(reader, "Host", "localhost")
 
 	switch conn.Driver {
@@ -89,6 +89,8 @@ func promptConnection(reader *bufio.Reader) config.Connection {
 		conn.Port = promptInt(reader, "Port", 5432)
 	case "mysql":
 		conn.Port = promptInt(reader, "Port", 3306)
+	case "sqlserver":
+		conn.Port = promptInt(reader, "Port", 1433)
 	}
 
 	conn.Database = promptString(reader, "Database name", "")

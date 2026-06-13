@@ -40,6 +40,8 @@ func (h *ListDatabasesHandler) Handle(ctx context.Context, in ListDatabasesInput
 		query = "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
 	case "mysql":
 		query = "SHOW DATABASES"
+	case "sqlserver":
+		query = "SELECT name FROM sys.databases WHERE database_id > 4 ORDER BY name"
 	default:
 		return errResult("400", "unsupported driver", conn.DriverName()), nil
 	}
@@ -132,6 +134,23 @@ func (h *ListTablesHandler) Handle(ctx context.Context, in ListTablesInput) (*mc
 		if err := rows.Err(); err != nil {
 			return auditErr(h.Audit, queryID, now, "list_tables", in.ConnectionID, conn.DriverName(), "500", "rows error", err)
 		}
+	case "sqlserver":
+		q := `SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_SCHEMA, TABLE_NAME`
+		rows, err := conn.QueryContext(ctx, q)
+		if err != nil {
+			return auditErr(h.Audit, queryID, now, "list_tables", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var t tableInfo
+			if err := rows.Scan(&t.Schema, &t.TableName, &t.TableType); err != nil {
+				return auditErr(h.Audit, queryID, now, "list_tables", in.ConnectionID, conn.DriverName(), "500", "scan failed", err)
+			}
+			tables = append(tables, t)
+		}
+		if err := rows.Err(); err != nil {
+			return auditErr(h.Audit, queryID, now, "list_tables", in.ConnectionID, conn.DriverName(), "500", "rows error", err)
+		}
 	default:
 		return errResult("400", "unsupported driver", conn.DriverName()), nil
 	}
@@ -216,6 +235,35 @@ func (h *DescribeTableHandler) Handle(ctx context.Context, in DescribeTableInput
 			WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE()
 			ORDER BY ORDINAL_POSITION`
 		rows, err := conn.QueryContext(ctx, q, in.Table)
+		if err != nil {
+			return auditErr(h.Audit, queryID, now, "describe_table", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var c columnInfo
+			var maxLen sql.NullInt64
+			if err := rows.Scan(&c.Name, &c.OrdinalPos, &c.Default, &c.Nullable, &c.DataType, &maxLen); err != nil {
+				return auditErr(h.Audit, queryID, now, "describe_table", in.ConnectionID, conn.DriverName(), "500", "scan failed", err)
+			}
+			if maxLen.Valid {
+				v := int(maxLen.Int64)
+				c.MaxLength = &v
+			}
+			columns = append(columns, c)
+		}
+		if err := rows.Err(); err != nil {
+			return auditErr(h.Audit, queryID, now, "describe_table", in.ConnectionID, conn.DriverName(), "500", "rows error", err)
+		}
+	case "sqlserver":
+		schema := in.Schema
+		if schema == "" {
+			schema = "dbo"
+		}
+		q := `SELECT COLUMN_NAME, ORDINAL_POSITION, COALESCE(COLUMN_DEFAULT,''), IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+			FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA = @p1 AND TABLE_NAME = @p2
+			ORDER BY ORDINAL_POSITION`
+		rows, err := conn.QueryContext(ctx, q, schema, in.Table)
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "describe_table", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}
@@ -324,6 +372,34 @@ func (h *ListIndexesHandler) Handle(ctx context.Context, in ListIndexesInput) (*
 		if err := rows.Err(); err != nil {
 			return auditErr(h.Audit, queryID, now, "list_indexes", in.ConnectionID, conn.DriverName(), "500", "rows error", err)
 		}
+	case "sqlserver":
+		schema := in.Schema
+		if schema == "" {
+			schema = "dbo"
+		}
+		q := `SELECT s.name, t.name, i.name, c.name, i.is_unique
+			FROM sys.indexes i
+			JOIN sys.tables t ON i.object_id = t.object_id
+			JOIN sys.schemas s ON t.schema_id = s.schema_id
+			JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+			JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+			WHERE t.name = @p1 AND s.name = @p2 AND i.name IS NOT NULL
+			ORDER BY i.name, ic.key_ordinal`
+		rows, err := conn.QueryContext(ctx, q, in.Table, schema)
+		if err != nil {
+			return auditErr(h.Audit, queryID, now, "list_indexes", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var idx indexInfo
+			if err := rows.Scan(&idx.SchemaName, &idx.TableName, &idx.IndexName, &idx.ColumnName, &idx.IsUnique); err != nil {
+				return auditErr(h.Audit, queryID, now, "list_indexes", in.ConnectionID, conn.DriverName(), "500", "scan failed", err)
+			}
+			indexes = append(indexes, idx)
+		}
+		if err := rows.Err(); err != nil {
+			return auditErr(h.Audit, queryID, now, "list_indexes", in.ConnectionID, conn.DriverName(), "500", "rows error", err)
+		}
 	default:
 		return errResult("400", "unsupported driver", conn.DriverName()), nil
 	}
@@ -420,6 +496,40 @@ func (h *ListForeignKeysHandler) Handle(ctx context.Context, in ListForeignKeysI
 				AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
 			ORDER BY kcu.CONSTRAINT_NAME`
 		rows, err := conn.QueryContext(ctx, q, in.Table)
+		if err != nil {
+			return auditErr(h.Audit, queryID, now, "list_foreign_keys", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var fk foreignKeyInfo
+			if err := rows.Scan(&fk.ConstraintName, &fk.TableSchema, &fk.TableName, &fk.ColumnName,
+				&fk.ForeignTableSchema, &fk.ForeignTableName, &fk.ForeignColumnName,
+				&fk.UpdateRule, &fk.DeleteRule); err != nil {
+				return auditErr(h.Audit, queryID, now, "list_foreign_keys", in.ConnectionID, conn.DriverName(), "500", "scan failed", err)
+			}
+			fks = append(fks, fk)
+		}
+		if err := rows.Err(); err != nil {
+			return auditErr(h.Audit, queryID, now, "list_foreign_keys", in.ConnectionID, conn.DriverName(), "500", "rows error", err)
+		}
+	case "sqlserver":
+		schema := in.Schema
+		if schema == "" {
+			schema = "dbo"
+		}
+		q := `SELECT fk.name, sch.name, tp.name, cp.name, sch_ref.name, tr.name, cr.name,
+				fk.update_referential_action_desc, fk.delete_referential_action_desc
+			FROM sys.foreign_keys fk
+			JOIN sys.tables tp ON fk.parent_object_id = tp.object_id
+			JOIN sys.schemas sch ON tp.schema_id = sch.schema_id
+			JOIN sys.tables tr ON fk.referenced_object_id = tr.object_id
+			JOIN sys.schemas sch_ref ON tr.schema_id = sch_ref.schema_id
+			JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+			JOIN sys.columns cp ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id
+			JOIN sys.columns cr ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
+			WHERE tp.name = @p1 AND sch.name = @p2
+			ORDER BY fk.name`
+		rows, err := conn.QueryContext(ctx, q, in.Table, schema)
 		if err != nil {
 			return auditErr(h.Audit, queryID, now, "list_foreign_keys", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
 		}

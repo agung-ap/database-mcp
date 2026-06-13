@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -98,6 +99,19 @@ func (c *Connection) BuildDSN() string {
 	case "mysql":
 		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s",
 			c.User, c.Password, c.Host, c.Port, c.Database)
+	case "sqlserver":
+		u := &url.URL{
+			Scheme: "sqlserver",
+			User:   url.UserPassword(c.User, c.Password),
+			Host:   fmt.Sprintf("%s:%d", c.Host, c.Port),
+		}
+		q := url.Values{}
+		q.Set("database", c.Database)
+		if c.SSLMode != "" {
+			q.Set("encrypt", c.SSLMode)
+		}
+		u.RawQuery = q.Encode()
+		return u.String()
 	default:
 		return ""
 	}

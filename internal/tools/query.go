@@ -157,6 +157,8 @@ func (h *ExplainQueryHandler) Handle(ctx context.Context, in ExplainQueryInput) 
 		explainQuery = "EXPLAIN (FORMAT JSON) " + in.Query
 	case "mysql":
 		explainQuery = "EXPLAIN FORMAT=JSON " + in.Query
+	case "sqlserver":
+		explainQuery = "SET SHOWPLAN_XML ON; " + in.Query + "; SET SHOWPLAN_XML OFF;"
 	default:
 		return errResult("400", "unsupported driver", conn.DriverName()), nil
 	}

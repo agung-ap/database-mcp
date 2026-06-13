@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/agung-ap/database-mcp/internal/config"
+	"github.com/agung-ap/database-mcp/internal/db/mssql"
 	"github.com/agung-ap/database-mcp/internal/db/mysql"
 	"github.com/agung-ap/database-mcp/internal/db/postgres"
 )
@@ -72,6 +73,12 @@ func openDriver(conn config.Connection) (Driver, error) {
 		})
 	case "mysql":
 		return mysql.New(dsn, mysql.PoolConfig{
+			MaxOpen:                conn.Pool.MaxOpen,
+			MaxIdle:                conn.Pool.MaxIdle,
+			ConnMaxLifetimeMinutes: conn.Pool.ConnMaxLifetimeMinutes,
+		})
+	case "sqlserver":
+		return mssql.New(dsn, mssql.PoolConfig{
 			MaxOpen:                conn.Pool.MaxOpen,
 			MaxIdle:                conn.Pool.MaxIdle,
 			ConnMaxLifetimeMinutes: conn.Pool.ConnMaxLifetimeMinutes,

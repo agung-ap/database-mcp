@@ -112,6 +112,44 @@ func (h *GetTableStatsHandler) Handle(ctx context.Context, in GetTableStatsInput
 		if err := rows.Err(); err != nil {
 			return auditErr(h.Audit, queryID, now, "get_table_stats", in.ConnectionID, conn.DriverName(), "500", "rows error", err)
 		}
+	case "sqlserver":
+		schema := in.Schema
+		if schema == "" {
+			schema = "dbo"
+		}
+		stats.Schema = schema
+		q := `SELECT SUM(p.rows), SUM(a.used_pages) * 8 * 1024, MAX(t.create_date)
+			FROM sys.tables t
+			JOIN sys.schemas sc ON t.schema_id = sc.schema_id
+			JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0,1)
+			JOIN sys.allocation_units a ON a.container_id = p.partition_id
+			WHERE t.name = @p1 AND sc.name = @p2
+			GROUP BY t.object_id`
+		rows, err := conn.QueryContext(ctx, q, in.Table, schema)
+		if err != nil {
+			return auditErr(h.Audit, queryID, now, "get_table_stats", in.ConnectionID, conn.DriverName(), "503", "query failed", err)
+		}
+		defer func() { _ = rows.Close() }()
+		if rows.Next() {
+			var rowCount, sizeBytes sql.NullInt64
+			var createTime sql.NullTime
+			if err := rows.Scan(&rowCount, &sizeBytes, &createTime); err != nil {
+				return auditErr(h.Audit, queryID, now, "get_table_stats", in.ConnectionID, conn.DriverName(), "500", "scan failed", err)
+			}
+			if rowCount.Valid {
+				stats.RowCount = rowCount.Int64
+			}
+			if sizeBytes.Valid {
+				stats.SizeBytes = sizeBytes.Int64
+			}
+			if createTime.Valid {
+				s := createTime.Time.Format(time.RFC3339)
+				stats.LastAnalyzed = &s
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return auditErr(h.Audit, queryID, now, "get_table_stats", in.ConnectionID, conn.DriverName(), "500", "rows error", err)
+		}
 	default:
 		return errResult("400", "unsupported driver", conn.DriverName()), nil
 	}

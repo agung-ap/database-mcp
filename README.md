@@ -46,9 +46,13 @@ The config lives at `~/.config/database-mcp/connections.json`. Create it manuall
 }
 ```
 
-**Supported drivers:** `postgres`, `mysql`
+**Supported drivers:** `postgres`, `mysql`, `sqlserver`
 
 **`ssl_mode` options (PostgreSQL):** `disable`, `require`, `verify-ca`, `verify-full`
+
+**`ssl_mode` for `sqlserver`:** maps to the `encrypt` connection option (e.g. `disable`, `true`, `false`)
+
+> **Note:** `execute_query` enforces a read-only transaction for `postgres` and `mysql`. SQL Server has no equivalent session-level read-only mode, so this guard is not enforced for `sqlserver` connections.
 
 > **Tip:** Keep passwords out of the config by using an environment variable instead:
 > ```bash
@@ -144,7 +148,7 @@ Create `.vscode/mcp.json` in your workspace:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `id` | ✅ | Unique name for this connection |
-| `driver` | ✅ | `postgres` or `mysql` |
+| `driver` | ✅ | `postgres`, `mysql`, or `sqlserver` |
 | `host` | ✅ | Database host |
 | `port` | ✅ | Database port |
 | `database` | ✅ | Database name |
@@ -190,6 +194,16 @@ Create `.vscode/mcp.json` in your workspace:
       "database": "myapp_staging",
       "user": "admin",
       "password": "secret"
+    },
+    {
+      "id": "reporting-mssql",
+      "driver": "sqlserver",
+      "host": "reporting.example.com",
+      "port": 1433,
+      "database": "myapp_reporting",
+      "user": "sa",
+      "password": "secret",
+      "ssl_mode": "true"
     }
   ]
 }
