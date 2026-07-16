@@ -5,9 +5,35 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/agung-ap/database-mcp/internal/config"
 )
+
+// claudeDesktopConfigPath returns the platform-specific location of Claude
+// Desktop's config file.
+func claudeDesktopConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		return filepath.Join(appData, "Claude", "claude_desktop_config.json"), nil
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json"), nil
+	default:
+		cfgDir := os.Getenv("XDG_CONFIG_HOME")
+		if cfgDir == "" {
+			cfgDir = filepath.Join(home, ".config")
+		}
+		return filepath.Join(cfgDir, "Claude", "claude_desktop_config.json"), nil
+	}
+}
 
 // WriteClaudeCodeConfig registers database-mcp with the Claude Code CLI via `claude mcp add`.
 // Uses --scope user so the server is available in all projects, not just the current one.
@@ -24,13 +50,11 @@ func WriteClaudeCodeConfig(binaryPath string) error {
 }
 
 // WriteClaudeDesktopConfig configures Claude Desktop with database-mcp.
-// Config file: ~/.claude/claude_desktop_config.json
 func WriteClaudeDesktopConfig(binaryPath string) error {
-	home, err := os.UserHomeDir()
+	cfgPath, err := claudeDesktopConfigPath()
 	if err != nil {
 		return err
 	}
-	cfgPath := filepath.Join(home, ".claude", "claude_desktop_config.json")
 
 	serverEntry := map[string]any{
 		"command": binaryPath,

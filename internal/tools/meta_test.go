@@ -24,7 +24,8 @@ func newTestAuditLogger(t *testing.T) *audit.Logger {
 }
 
 type mockManager struct {
-	drivers map[string]db.Driver
+	drivers  map[string]db.Driver
+	readOnly map[string]bool
 }
 
 func (m *mockManager) Get(connectionID string) (db.Driver, error) {
@@ -34,8 +35,16 @@ func (m *mockManager) Get(connectionID string) (db.Driver, error) {
 	return nil, errors.New("unknown connection: " + connectionID)
 }
 
+func (m *mockManager) IsReadOnly(connectionID string) bool {
+	return m.readOnly[connectionID]
+}
+
 func newMockManager(drivers map[string]db.Driver) *mockManager {
-	return &mockManager{drivers: drivers}
+	return &mockManager{drivers: drivers, readOnly: map[string]bool{}}
+}
+
+func newMockManagerReadOnly(drivers map[string]db.Driver, readOnly map[string]bool) *mockManager {
+	return &mockManager{drivers: drivers, readOnly: readOnly}
 }
 
 

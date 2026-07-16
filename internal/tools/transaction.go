@@ -25,6 +25,7 @@ type TxStore struct {
 	mu    sync.Mutex
 	store map[string]*TxEntry
 	ttl   time.Duration
+	done  chan struct{}
 }
 
 // NewTxStore creates a TxStore with the given TTL and starts a background sweeper.
@@ -32,16 +33,28 @@ func NewTxStore(ttl time.Duration) *TxStore {
 	ts := &TxStore{
 		store: make(map[string]*TxEntry),
 		ttl:   ttl,
+		done:  make(chan struct{}),
 	}
 	go ts.sweep()
 	return ts
 }
 
+// Stop halts the background sweeper goroutine. Safe to call once; intended
+// for tests and graceful shutdown so the goroutine doesn't leak.
+func (ts *TxStore) Stop() {
+	close(ts.done)
+}
+
 func (ts *TxStore) sweep() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	for range ticker.C {
-		ts.rollbackExpired()
+	for {
+		select {
+		case <-ticker.C:
+			ts.rollbackExpired()
+		case <-ts.done:
+			return
+		}
 	}
 }
 
@@ -88,6 +101,33 @@ func (ts *TxStore) Remove(txID string) {
 	delete(ts.store, txID)
 }
 
+// Claim atomically retrieves and removes a transaction entry by ID. Use this
+// (rather than Get followed by Remove) for commit/rollback so a concurrent
+// caller or the TTL sweeper can't act on the same tx_id twice.
+func (ts *TxStore) Claim(txID string) (*TxEntry, bool) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	entry, ok := ts.store[txID]
+	if ok {
+		delete(ts.store, txID)
+	}
+	return entry, ok
+}
+
+// Touch retrieves a transaction entry by ID and extends its TTL, since the
+// caller is actively using it. Without this, a long-running LLM think-loop
+// between statements could have its transaction rolled back mid-use by the
+// sweeper even though the tx_id was in active use.
+func (ts *TxStore) Touch(txID string) (*TxEntry, bool) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	entry, ok := ts.store[txID]
+	if ok {
+		entry.ExpiresAt = time.Now().Add(ts.ttl)
+	}
+	return entry, ok
+}
+
 // RollbackAll rolls back all open transactions (called on server shutdown).
 func (ts *TxStore) RollbackAll() {
 	ts.mu.Lock()
@@ -123,6 +163,11 @@ func (h *BeginTransactionHandler) Handle(ctx context.Context, in BeginTransactio
 		return auditErr(h.Audit, queryID, now, "begin_transaction", in.ConnectionID, "", "503", "connection not found", err)
 	}
 
+	if h.Manager.IsReadOnly(in.ConnectionID) {
+		return auditErr(h.Audit, queryID, now, "begin_transaction", in.ConnectionID, conn.DriverName(), "403",
+			"connection is read-only", fmt.Errorf("connection %q is configured as read_only: transactions are not permitted", in.ConnectionID))
+	}
+
 	tx, err := conn.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return auditErr(h.Audit, queryID, now, "begin_transaction", in.ConnectionID, conn.DriverName(), "503", "begin transaction failed", err)
@@ -152,7 +197,7 @@ func (h *CommitTransactionHandler) Handle(ctx context.Context, in CommitTransact
 		return errResult("400", "missing tx_id", "tx_id is required"), nil
 	}
 
-	entry, ok := h.TxStore.Get(in.TxID)
+	entry, ok := h.TxStore.Claim(in.TxID)
 	if !ok {
 		return errResult("400", "tx_id not found", fmt.Sprintf("no active transaction with id %q", in.TxID)), nil
 	}
@@ -161,7 +206,6 @@ func (h *CommitTransactionHandler) Handle(ctx context.Context, in CommitTransact
 		return auditErr(h.Audit, queryID, now, "commit_transaction", entry.ConnID, entry.Driver, "503", "commit failed", err)
 	}
 
-	h.TxStore.Remove(in.TxID)
 	auditSuccess(h.Audit, queryID, now, "commit_transaction", entry.ConnID, entry.Driver, "", 0, 0)
 	return textResult(`{"committed":true}`), nil
 }
@@ -185,7 +229,7 @@ func (h *RollbackTransactionHandler) Handle(ctx context.Context, in RollbackTran
 		return errResult("400", "missing tx_id", "tx_id is required"), nil
 	}
 
-	entry, ok := h.TxStore.Get(in.TxID)
+	entry, ok := h.TxStore.Claim(in.TxID)
 	if !ok {
 		return errResult("400", "tx_id not found", fmt.Sprintf("no active transaction with id %q", in.TxID)), nil
 	}
@@ -194,7 +238,6 @@ func (h *RollbackTransactionHandler) Handle(ctx context.Context, in RollbackTran
 		return auditErr(h.Audit, queryID, now, "rollback_transaction", entry.ConnID, entry.Driver, "503", "rollback failed", err)
 	}
 
-	h.TxStore.Remove(in.TxID)
 	auditSuccess(h.Audit, queryID, now, "rollback_transaction", entry.ConnID, entry.Driver, "", 0, 0)
 	return textResult(`{"rolled_back":true}`), nil
 }
