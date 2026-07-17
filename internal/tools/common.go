@@ -1,8 +1,10 @@
 package tools
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -20,6 +22,15 @@ const (
 // DBManager is the interface tool handlers use to look up connections.
 type DBManager interface {
 	Get(connectionID string) (db.Driver, error)
+	IsReadOnly(connectionID string) bool
+}
+
+// querier is satisfied by both db.Driver and *sql.Tx, letting query/mutation
+// handlers run against either a pooled connection or an open transaction
+// through the same code path.
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
 // textResult wraps a JSON string in a successful MCP tool result.
@@ -31,11 +42,17 @@ func textResult(text string) *mcp.CallToolResult {
 
 // errResult returns a structured MCP tool error result.
 func errResult(code, message, detail string) *mcp.CallToolResult {
+	data, err := json.Marshal(struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Detail  string `json:"detail"`
+	}{Code: code, Message: message, Detail: detail})
+	if err != nil {
+		data = []byte(`{"code":"500","message":"internal error","detail":"failed to encode error"}`)
+	}
 	return &mcp.CallToolResult{
 		IsError: true,
-		Content: []mcp.Content{&mcp.TextContent{
-			Text: fmt.Sprintf(`{"code":"%s","message":"%s","detail":"%s"}`, code, message, detail),
-		}},
+		Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
 	}
 }
 
@@ -60,21 +77,26 @@ func newUUID() string {
 }
 
 // scanAllRows scans up to limit rows from sql.Rows into a slice of maps.
-// []byte values are converted to strings for JSON readability.
-func scanAllRows(rows *sql.Rows, limit int) ([]map[string]any, error) {
+// []byte values are converted to strings for JSON readability. The second
+// return value reports whether more rows existed beyond the limit, so
+// callers can tell a full result set from a truncated one.
+func scanAllRows(rows *sql.Rows, limit int) ([]map[string]any, bool, error) {
 	cols, err := rows.Columns()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var results []map[string]any
-	for rows.Next() && len(results) < limit {
+	for rows.Next() {
+		if len(results) >= limit {
+			return results, true, rows.Err()
+		}
 		vals := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
 		for i := range vals {
 			ptrs[i] = &vals[i]
 		}
 		if err := rows.Scan(ptrs...); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		row := make(map[string]any, len(cols))
 		for i, col := range cols {
@@ -86,7 +108,7 @@ func scanAllRows(rows *sql.Rows, limit int) ([]map[string]any, error) {
 		}
 		results = append(results, row)
 	}
-	return results, rows.Err()
+	return results, false, rows.Err()
 }
 
 // auditErr logs a failure and returns a tool error result.

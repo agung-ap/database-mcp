@@ -38,6 +38,7 @@ func New(dsn string, pool PoolConfig) (*Driver, error) {
 	if pool.ConnMaxLifetimeMinutes > 0 {
 		db.SetConnMaxLifetime(time.Duration(pool.ConnMaxLifetimeMinutes) * time.Minute)
 	}
+	db.SetConnMaxIdleTime(5 * time.Minute)
 
 	return &Driver{db: db}, nil
 }
@@ -52,6 +53,10 @@ func (d *Driver) ExecContext(ctx context.Context, query string, args ...any) (sq
 
 func (d *Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	return d.db.BeginTx(ctx, opts)
+}
+
+func (d *Driver) Conn(ctx context.Context) (*sql.Conn, error) {
+	return d.db.Conn(ctx)
 }
 
 func (d *Driver) PingContext(ctx context.Context) error {

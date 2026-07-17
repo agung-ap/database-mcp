@@ -13,8 +13,9 @@ import (
 
 // ConnectionInfo is returned by list_connections.
 type ConnectionInfo struct {
-	ID     string `json:"id"`
-	Driver string `json:"driver"`
+	ID       string `json:"id"`
+	Driver   string `json:"driver"`
+	ReadOnly bool   `json:"read_only"`
 }
 
 // ListConnectionsInput is the input for the list_connections tool.

@@ -10,6 +10,7 @@ type MockDriver struct {
 	QueryContextFn func(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContextFn  func(ctx context.Context, query string, args ...any) (sql.Result, error)
 	BeginTxFn      func(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+	ConnFn         func(ctx context.Context) (*sql.Conn, error)
 	PingContextFn  func(ctx context.Context) error
 	CloseFn        func() error
 	DriverNameFn   func() string
@@ -32,6 +33,13 @@ func (m *MockDriver) ExecContext(ctx context.Context, query string, args ...any)
 func (m *MockDriver) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	if m.BeginTxFn != nil {
 		return m.BeginTxFn(ctx, opts)
+	}
+	return nil, nil
+}
+
+func (m *MockDriver) Conn(ctx context.Context) (*sql.Conn, error) {
+	if m.ConnFn != nil {
+		return m.ConnFn(ctx)
 	}
 	return nil, nil
 }

@@ -17,12 +17,91 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
         go-version: '1.25'
+        cache: true
+
+    - name: Gofmt
+      run: |
+        fmt_out="$(gofmt -l .)"
+        if [ -n "$fmt_out" ]; then
+          echo "The following files are not gofmt'ed:"
+          echo "$fmt_out"
+          exit 1
+        fi
 
     - name: Build
       run: go build -v ./...
 
-    - name: Test
-      run: go test -v ./...
+    - name: Vet
+      run: go vet ./...
+
+    - name: Test (race)
+      run: go test -race -v ./...
+
+    - name: govulncheck
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        govulncheck ./...
+
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest
+        install-mode: goinstall
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports: [ "5432:5432" ]
+        options: >-
+          --health-cmd "pg_isready -U testuser -d testdb"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: testdb
+          MYSQL_USER: testuser
+          MYSQL_PASSWORD: testpass
+        ports: [ "3306:3306" ]
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -u testuser -ptestpass"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "TestPass123!"
+        ports: [ "1433:1433" ]
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"TestPass123!\" -Q \"SELECT 1\""
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+        cache: true
+
+    - name: Create SQL Server test database
+      run: >
+        docker exec ${{ job.services.mssql.id }}
+        /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "TestPass123!"
+        -Q "IF DB_ID('testdb') IS NULL CREATE DATABASE testdb;"
+
+    - name: Integration tests
+      env:
+        MCP_DB_IT_POSTGRES_DSN: "postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable"
+        MCP_DB_IT_MYSQL_DSN: "testuser:testpass@tcp(localhost:3306)/testdb?parseTime=true"
+        MCP_DB_IT_MSSQL_DSN: "sqlserver://sa:TestPass123!@localhost:1433?database=testdb"
+      run: go test -tags integration -v ./integration/...

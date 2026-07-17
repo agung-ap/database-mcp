@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -17,9 +19,20 @@ import (
 	"github.com/agung-ap/database-mcp/internal/tools"
 )
 
+// version is set at build time via -ldflags "-X main.version=v1.2.3".
+var version = "dev"
+
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "init" {
-		os.Exit(dbinit.RunWizard())
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "init":
+			os.Exit(dbinit.RunWizard())
+		case "version":
+			fmt.Println("database-mcp " + version)
+			os.Exit(0)
+		case "secret":
+			os.Exit(runSecretCommand(os.Args[2:]))
+		}
 	}
 	runServer()
 }
@@ -62,7 +75,7 @@ func runServer() {
 	// Audit log
 	auditPath := os.Getenv("MCP_DB_AUDIT_LOG")
 	if auditPath == "" {
-		auditPath = config.ConfigDir() + "/audit.log"
+		auditPath = filepath.Join(config.ConfigDir(), "audit.log")
 	}
 	auditLogger, err := audit.New(auditPath)
 	if err != nil {
@@ -72,20 +85,31 @@ func runServer() {
 	defer func() { _ = auditLogger.Close() }()
 
 	// Transaction TTL
-	ttlSeconds := 30
+	ttlSeconds := 120
 	if s := os.Getenv("MCP_DB_TRANSACTION_TTL_SECONDS"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			ttlSeconds = n
 		}
 	}
 	txStore := tools.NewTxStore(time.Duration(ttlSeconds) * time.Second)
+	defer txStore.Stop()
+
+	// Query timeout: bounds every tool call so a runaway query can't hang
+	// the server indefinitely.
+	timeoutSeconds := 30
+	if s := os.Getenv("MCP_DB_QUERY_TIMEOUT_SECONDS"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			timeoutSeconds = n
+		}
+	}
 
 	// Build and register MCP server
-	srv := internalmcp.NewServer("database-mcp", "2.0.0")
+	srv := internalmcp.NewServer("database-mcp", version)
 	h := &internalmcp.Handler{
-		Manager: manager,
-		Audit:   auditLogger,
-		TxStore: txStore,
+		Manager:      manager,
+		Audit:        auditLogger,
+		TxStore:      txStore,
+		QueryTimeout: time.Duration(timeoutSeconds) * time.Second,
 	}
 	h.RegisterAll(srv)
 
@@ -96,8 +120,11 @@ func runServer() {
 	go func() {
 		sig := <-sigCh
 		slog.Info("received shutdown signal", "signal", sig)
+		// Roll back open transactions and stop accepting new work before
+		// tearing down connection pools, so in-flight queries aren't yanked
+		// out from under active requests. Pool/audit cleanup happens via the
+		// deferred CloseAll/Close calls once ServeStdio returns.
 		txStore.RollbackAll()
-		manager.CloseAll()
 		cancel()
 	}()
 

@@ -14,6 +14,10 @@ type Driver interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	// BeginTx starts a transaction.
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+	// Conn returns a single dedicated connection from the pool. Used when a
+	// caller needs several statements to run on the same backend session
+	// (e.g. SQL Server's SET SHOWPLAN_XML, which must be its own batch).
+	Conn(ctx context.Context) (*sql.Conn, error)
 	// PingContext checks connectivity.
 	PingContext(ctx context.Context) error
 	// Close closes the underlying connection pool.

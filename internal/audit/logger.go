@@ -3,10 +3,16 @@ package audit
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
+
+// maxLogSizeBytes is the size at which the audit log is rotated to a single
+// backup generation (audit.log -> audit.log.1) on the next New() call.
+const maxLogSizeBytes = 50 * 1024 * 1024
 
 // AuditEntry represents a single audit log record.
 type AuditEntry struct {
@@ -29,10 +35,23 @@ type Logger struct {
 	file *os.File
 }
 
-// New opens (or creates) the audit log file at the given path.
-// The parent directory must already exist.
+// New opens (or creates) the audit log file at the given path, creating the
+// parent directory if necessary. The file (and its containing directory) are
+// restricted to the owner since audit entries include full query text.
 func New(path string) (*Logger, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("audit: mkdir %q: %w", filepath.Dir(path), err)
+	}
+
+	if info, err := os.Stat(path); err == nil && info.Size() > maxLogSizeBytes {
+		rotated := path + ".1"
+		_ = os.Remove(rotated)
+		if err := os.Rename(path, rotated); err != nil {
+			slog.Warn("audit: failed to rotate log", "path", path, "error", err)
+		}
+	}
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("audit: open %q: %w", path, err)
 	}
@@ -46,9 +65,12 @@ func (l *Logger) Log(entry AuditEntry) {
 
 	data, err := json.Marshal(entry)
 	if err != nil {
+		slog.Error("audit: failed to marshal entry", "error", err)
 		return
 	}
-	_, _ = l.file.Write(append(data, '\n'))
+	if _, err := l.file.Write(append(data, '\n')); err != nil {
+		slog.Error("audit: failed to write entry", "error", err)
+	}
 }
 
 // Close closes the underlying log file.

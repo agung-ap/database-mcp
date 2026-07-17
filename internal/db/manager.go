@@ -12,16 +12,18 @@ import (
 
 // Manager manages a set of named database connections.
 type Manager struct {
-	mu      sync.RWMutex
-	drivers map[string]Driver
-	conns   []config.Connection
+	mu       sync.RWMutex
+	drivers  map[string]Driver
+	readOnly map[string]bool
+	conns    []config.Connection
 }
 
 // NewManager creates a Manager from the given connection configs and opens all connections.
 func NewManager(connections []config.Connection) (*Manager, error) {
 	m := &Manager{
-		drivers: make(map[string]Driver),
-		conns:   connections,
+		drivers:  make(map[string]Driver),
+		readOnly: make(map[string]bool),
+		conns:    connections,
 	}
 	for _, conn := range connections {
 		drv, err := openDriver(conn)
@@ -29,6 +31,7 @@ func NewManager(connections []config.Connection) (*Manager, error) {
 			return nil, fmt.Errorf("manager: open %q: %w", conn.ID, err)
 		}
 		m.drivers[conn.ID] = drv
+		m.readOnly[conn.ID] = conn.ReadOnly
 	}
 	return m, nil
 }
@@ -43,6 +46,15 @@ func (m *Manager) Get(connectionID string) (Driver, error) {
 		return nil, fmt.Errorf("manager: unknown connection %q", connectionID)
 	}
 	return drv, nil
+}
+
+// IsReadOnly reports whether the given connection is configured as read-only.
+// Unknown connection IDs report false; callers should have already validated
+// the ID via Get.
+func (m *Manager) IsReadOnly(connectionID string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.readOnly[connectionID]
 }
 
 // Connections returns the list of configured connections (IDs and drivers).
@@ -61,27 +73,51 @@ func (m *Manager) CloseAll() {
 	}
 }
 
+// Default pool limits applied when a connection's config leaves the
+// corresponding field unset (<= 0). Without these, Go's default of
+// "unlimited" open connections lets a single agent exhaust the database's
+// connection slots.
+const (
+	defaultMaxOpen                = 5
+	defaultMaxIdle                = 2
+	defaultConnMaxLifetimeMinutes = 30
+)
+
+func resolvePool(p config.PoolConfig) config.PoolConfig {
+	if p.MaxOpen <= 0 {
+		p.MaxOpen = defaultMaxOpen
+	}
+	if p.MaxIdle <= 0 {
+		p.MaxIdle = defaultMaxIdle
+	}
+	if p.ConnMaxLifetimeMinutes <= 0 {
+		p.ConnMaxLifetimeMinutes = defaultConnMaxLifetimeMinutes
+	}
+	return p
+}
+
 func openDriver(conn config.Connection) (Driver, error) {
 	dsn := conn.BuildDSN()
+	pool := resolvePool(conn.Pool)
 
 	switch conn.Driver {
 	case "postgres":
 		return postgres.New(dsn, postgres.PoolConfig{
-			MaxOpen:                conn.Pool.MaxOpen,
-			MaxIdle:                conn.Pool.MaxIdle,
-			ConnMaxLifetimeMinutes: conn.Pool.ConnMaxLifetimeMinutes,
+			MaxOpen:                pool.MaxOpen,
+			MaxIdle:                pool.MaxIdle,
+			ConnMaxLifetimeMinutes: pool.ConnMaxLifetimeMinutes,
 		})
 	case "mysql":
 		return mysql.New(dsn, mysql.PoolConfig{
-			MaxOpen:                conn.Pool.MaxOpen,
-			MaxIdle:                conn.Pool.MaxIdle,
-			ConnMaxLifetimeMinutes: conn.Pool.ConnMaxLifetimeMinutes,
+			MaxOpen:                pool.MaxOpen,
+			MaxIdle:                pool.MaxIdle,
+			ConnMaxLifetimeMinutes: pool.ConnMaxLifetimeMinutes,
 		})
 	case "sqlserver":
 		return mssql.New(dsn, mssql.PoolConfig{
-			MaxOpen:                conn.Pool.MaxOpen,
-			MaxIdle:                conn.Pool.MaxIdle,
-			ConnMaxLifetimeMinutes: conn.Pool.ConnMaxLifetimeMinutes,
+			MaxOpen:                pool.MaxOpen,
+			MaxIdle:                pool.MaxIdle,
+			ConnMaxLifetimeMinutes: pool.ConnMaxLifetimeMinutes,
 		})
 	default:
 		return nil, fmt.Errorf("unsupported driver %q", conn.Driver)
