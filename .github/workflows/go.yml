@@ -40,6 +40,7 @@ jobs:
       uses: golangci/golangci-lint-action@v6
       with:
         version: latest
+        install-mode: goinstall
 
   integration:
     runs-on: ubuntu-latest
@@ -92,6 +93,6 @@ jobs:
     - name: Integration tests
       env:
         MCP_DB_IT_POSTGRES_DSN: "postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable"
-        MCP_DB_IT_MYSQL_DSN: "testuser:testpass@tcp(localhost:3306)/testdb"
+        MCP_DB_IT_MYSQL_DSN: "testuser:testpass@tcp(localhost:3306)/testdb?parseTime=true"
         MCP_DB_IT_MSSQL_DSN: "sqlserver://sa:TestPass123!@localhost:1433?database=testdb"
       run: go test -tags integration -v ./integration/...

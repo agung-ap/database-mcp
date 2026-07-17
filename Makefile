@@ -13,7 +13,7 @@ integration-up:
 
 integration-test:
 	MCP_DB_IT_POSTGRES_DSN="postgres://testuser:testpass@localhost:55432/testdb?sslmode=disable" \
-	MCP_DB_IT_MYSQL_DSN="testuser:testpass@tcp(localhost:53306)/testdb" \
+	MCP_DB_IT_MYSQL_DSN="testuser:testpass@tcp(localhost:53306)/testdb?parseTime=true" \
 	MCP_DB_IT_MSSQL_DSN="sqlserver://sa:TestPass123!@localhost:51433?database=testdb" \
 	go test -tags integration -v ./integration/...
 
