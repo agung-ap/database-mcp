@@ -47,7 +47,6 @@ func newMockManagerReadOnly(drivers map[string]db.Driver, readOnly map[string]bo
 	return &mockManager{drivers: drivers, readOnly: readOnly}
 }
 
-
 func TestListConnections(t *testing.T) {
 	logger := newTestAuditLogger(t)
 	h := &ListConnectionsHandler{

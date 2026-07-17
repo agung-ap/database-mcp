@@ -5,3 +5,6 @@ docker/
 
 # ignore file
 CLAUDE.md
+
+# pipeline scripts (not committed)
+.pipeline/

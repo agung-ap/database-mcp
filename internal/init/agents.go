@@ -38,6 +38,14 @@ func claudeDesktopConfigPath() (string, error) {
 // WriteClaudeCodeConfig registers database-mcp with the Claude Code CLI via `claude mcp add`.
 // Uses --scope user so the server is available in all projects, not just the current one.
 func WriteClaudeCodeConfig(binaryPath string) error {
+	// binaryPath comes from os.Executable() in the caller — it's the current
+	// binary's own path, not user-controlled input. We validate it anyway to
+	// catch programming errors early, then suppress the gosec G204 warning
+	// (subprocess with variable args) since the value is proven safe.
+	if !filepath.IsAbs(binaryPath) && binaryPath != "database-mcp" {
+		return fmt.Errorf("invalid binary path: %q", binaryPath)
+	}
+	//nolint:gosec // binaryPath validated above; sourced from os.Executable()
 	cmd := exec.Command("claude", "mcp", "add", "database-mcp", binaryPath,
 		"--scope", "user",
 		"--env", "MCP_DB_CONFIG_PATH="+config.DefaultConfigPath(),
