@@ -195,6 +195,7 @@ func (c *Connection) BuildDSN() string {
 		cfg.Net = "tcp"
 		cfg.Addr = fmt.Sprintf("%s:%d", c.Host, c.Port)
 		cfg.DBName = c.Database
+		cfg.ParseTime = true
 		switch c.SSLMode {
 		case "", "disable":
 			// no TLS

@@ -32,7 +32,7 @@ func TestBuildDSN_MySQL(t *testing.T) {
 		User:     "admin",
 		Password: "secret",
 	}
-	assert.Equal(t, "admin:secret@tcp(localhost:3306)/myapp", c.BuildDSN())
+	assert.Equal(t, "admin:secret@tcp(localhost:3306)/myapp?parseTime=true", c.BuildDSN())
 }
 
 func TestBuildDSN_SQLServer(t *testing.T) {
